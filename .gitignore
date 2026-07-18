@@ -1,0 +1,12 @@
+.env
+*.db
+*.db.bak*
+run.log
+nohup.out
+__pycache__/
+.venv/
+node_modules/
+frontend/dist/
+backtest/data/
+.pytest_cache/
+.DS_Store

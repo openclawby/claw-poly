@@ -1,0 +1,118 @@
+[
+ {
+  "strategy": "fair_value",
+  "params": {
+   "edge_min": 0.15
+  },
+  "entry_delay": 60,
+  "is": {
+   "trades": 634,
+   "win_rate": 75.4,
+   "ev_usd": 1.9413,
+   "net_usd": 1230.81,
+   "max_dd": 25.0
+  },
+  "oos": {
+   "trades": 251,
+   "win_rate": 73.3,
+   "ev_usd": 1.7807,
+   "net_usd": 446.95,
+   "max_dd": 25.59
+  },
+  "verdict": "✅ 上架"
+ },
+ {
+  "strategy": "tick_momo",
+  "params": {
+   "momo_window": 60,
+   "momo_min": 0.08
+  },
+  "entry_delay": 60,
+  "is": {
+   "trades": 128,
+   "win_rate": 83.6,
+   "ev_usd": 2.4265,
+   "net_usd": 310.59,
+   "max_dd": 18.12
+  },
+  "oos": {
+   "trades": 30,
+   "win_rate": 90.0,
+   "ev_usd": 3.0369,
+   "net_usd": 91.11,
+   "max_dd": 10.0
+  },
+  "verdict": "✅ 上架"
+ },
+ {
+  "strategy": "open_burst",
+  "params": {
+   "burst_min": 0.07
+  },
+  "entry_delay": 60,
+  "is": {
+   "trades": 165,
+   "win_rate": 84.2,
+   "ev_usd": 2.4811,
+   "net_usd": 409.39,
+   "max_dd": 15.0
+  },
+  "oos": {
+   "trades": 43,
+   "win_rate": 90.7,
+   "ev_usd": 3.0982,
+   "net_usd": 133.22,
+   "max_dd": 6.3
+  },
+  "verdict": "✅ 上架"
+ },
+ {
+  "strategy": "prev_reverse",
+  "params": {
+   "rev_min": 0.18
+  },
+  "entry_delay": 10,
+  "is": {
+   "trades": 104,
+   "win_rate": 67.3,
+   "ev_usd": 1.5417,
+   "net_usd": 160.34,
+   "max_dd": 16.8
+  },
+  "oos": {
+   "trades": 31,
+   "win_rate": 54.8,
+   "ev_usd": 0.3547,
+   "net_usd": 11.0,
+   "max_dd": 40.91
+  },
+  "verdict": "⚠️ 观察(OOS 净利过薄)"
+ },
+ {
+  "strategy": "pre_trend",
+  "params": {
+   "signal": "revert",
+   "lookback_sec": 900,
+   "min_move_pct": 0.2,
+   "lead_sec": 300,
+   "max_price": 0.51,
+   "cover": 1
+  },
+  "entry_delay": 0,
+  "is": {
+   "trades": 2880,
+   "win_rate": 52.01,
+   "ev_usd": 0.0994,
+   "net_usd": 286.27,
+   "max_dd": null
+  },
+  "oos": {
+   "trades": 1420,
+   "win_rate": 51.55,
+   "ev_usd": 0.0539,
+   "net_usd": 76.47,
+   "max_dd": null
+  },
+  "verdict": "✅ 上架"
+ }
+]

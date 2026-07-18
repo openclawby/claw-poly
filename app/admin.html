@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>polymarketbot · BTC 5m UpDown</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;background:#0b0e13;color:#dde3ea;
+       max-width:1080px;margin:24px auto;padding:0 16px;font-size:14px}
+  h1{font-size:20px} h2{font-size:15px;margin:22px 0 8px;color:#9fb0c3}
+  .card{background:#131822;border:1px solid #1f2937;border-radius:10px;padding:14px 16px;margin-bottom:12px}
+  .row{display:flex;align-items:center;gap:10px;margin:8px 0}
+  label{width:220px;color:#9fb0c3} label small{display:block;font-size:11px;color:#5c6b7c}
+  input,select{background:#0b0e13;color:#dde3ea;border:1px solid #2a3648;border-radius:6px;padding:6px 8px}
+  button{background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+  button.gray{background:#30363d}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:6px 8px;border-bottom:1px solid #1f2937;text-align:left}
+  th{color:#9fb0c3;font-weight:500}
+  .stat{display:inline-block;background:#0b0e13;border:1px solid #2a3648;border-radius:6px;
+        padding:4px 10px;margin:0 6px 6px 0;font-size:12.5px}
+  .up{color:#3fb950}.down{color:#f85149}.muted{color:#5c6b7c}
+  .pill{padding:2px 8px;border-radius:10px;font-size:11px;background:#1f2937}
+  .live{background:#7d1a1a}.paper{background:#1a4d7d}
+  #msg{margin-left:10px;color:#3fb950}
+  .warn{background:#2d1a00;border:1px solid #7d5a1a;border-radius:8px;padding:10px 12px;
+        font-size:12.5px;margin-bottom:12px;color:#e0b35c}
+</style>
+
+<h1>🎲 polymarketbot <span id="modepill" class="pill paper">PAPER</span></h1>
+<div id="status" class="card">loading…</div>
+<div id="livewarn" class="warn" style="display:none">
+  ⚠️ 实盘就绪检查:.env 缺少 <b>PM_PRIVATE_KEY</b>(签名地址对应的钱包私钥)。
+  自行编辑 .env 填入后重启,再在下方打开实盘开关。首次实盘前请确认 Polymarket
+  账户已对 Exchange 完成 USDC.e 授权且余额充足。
+</div>
+
+<h2>⚙️ 设置(保存即热生效)</h2>
+<div class="card">
+  <div class="row"><label>每盘下单 (USD)</label><input type="number" id="usd_per_market" step="1" min="1" style="width:100px"></div>
+  <div class="row"><label>止盈 %<small>持仓 token 价 ≥ 入场×(1+X%) 挂卖单锁利</small></label><input type="number" id="take_profit_pct" step="1" style="width:100px"></div>
+  <div class="row"><label>滚动盘口数<small>默认 6 = 未来 30 分钟</small></label><input type="number" id="horizon" min="1" max="12" style="width:100px"></div>
+  <div class="row"><label>策略</label><select id="strategy">
+    <option value="fair_value">fair_value · 理论定价套利</option>
+    <option value="tick_momo">tick_momo · 秒级动量</option>
+    <option value="open_burst">open_burst · 开盘冲量</option>
+    <option value="prev_reverse">prev_reverse · 前盘反转</option>
+  </select></div>
+  <div class="row"><label>入场延迟 (秒)<small>盘口开始后 N 秒评估入场</small></label><input type="number" id="entry_delay_sec" min="0" max="240" style="width:100px"></div>
+  <div class="row"><label>日亏熔断 (USD)</label><input type="number" id="daily_loss_halt_usd" style="width:100px"></div>
+  <div class="row"><label>总敞口上限 (USD)</label><input type="number" id="max_open_usd" style="width:100px"></div>
+  <div class="row"><label>最高买入概率<small>限价超过此值不下单(overpay 保护)</small></label><input type="number" id="overpay_cap" step="0.01" max="0.99" style="width:100px"></div>
+  <div class="row"><label>策略参数 (JSON)</label><input type="text" id="params" style="width:420px;font-family:monospace"></div>
+  <div class="row"><label>🔴 实盘自动交易<small>开启 = 授权真实资金自动挂单</small></label><input type="checkbox" id="live_enabled"></div>
+  <button onclick="save()">💾 保存</button><span id="msg"></span>
+</div>
+
+<h2>🎯 盘口(最近 24 个)</h2>
+<div class="card"><table id="rounds"><thead><tr>
+  <th>盘口</th><th>开始</th><th>状态</th><th>方向</th><th>入场价</th><th>USD</th>
+  <th>开盘价</th><th>收盘价</th><th>结果</th><th>盈亏</th><th>依据</th>
+</tr></thead><tbody></tbody></table></div>
+
+<h2>📜 最近订单</h2>
+<div class="card"><table id="orders"><thead><tr>
+  <th>时间</th><th>盘口</th><th>类型</th><th>方向</th><th>价格</th><th>USD</th><th>模式</th><th>备注</th>
+</tr></thead><tbody></tbody></table></div>
+
+<script>
+const FIELDS = ["usd_per_market","take_profit_pct","horizon","strategy","entry_delay_sec",
+                "daily_loss_halt_usd","max_open_usd","overpay_cap","params","live_enabled"];
+const fmtT = ts => new Date(ts*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+async function load(){
+  const r = await fetch("/api/state"); const d = await r.json();
+  for (const f of FIELDS){
+    const el = document.getElementById(f); if(!el || document.activeElement===el) continue;
+    if (el.type==="checkbox") el.checked = d.settings[f]==="1";
+    else el.value = d.settings[f] ?? "";
+  }
+  const s = d.status;
+  document.getElementById("modepill").textContent = s.mode.toUpperCase();
+  document.getElementById("modepill").className = "pill " + s.mode;
+  document.getElementById("livewarn").style.display = s.live_ready ? "none" : "";
+  const age = s.last_tick ? (s.now - s.last_tick) + "s" : "-";
+  document.getElementById("status").innerHTML =
+    `<span class="stat">BTC: <b>$${(s.btc||0).toLocaleString()}</b></span>`+
+    `<span class="stat">秒级缓冲: <b>${s.btc_buffer_min}min</b></span>`+
+    `<span class="stat">引擎: <b>${age} 前</b></span>`+
+    `<span class="stat">今日已实现: <b class="${s.realized_today>=0?'up':'down'}">$${s.realized_today.toFixed(2)}</b></span>`+
+    (s.halted ? `<span class="stat down">⛔ 日亏熔断中</span>` : "");
+  const rb = document.querySelector("#rounds tbody");
+  rb.innerHTML = (d.rounds||[]).map(x=>{
+    const pnl = x.pnl==null?"-":`<b class="${x.pnl>=0?'up':'down'}">${x.pnl>=0?'+':''}${x.pnl.toFixed(2)}</b>`;
+    return `<tr><td class="muted">${x.slug.slice(-10)}</td><td>${fmtT(x.start_ts)}</td>`+
+      `<td>${x.state}</td><td class="${x.side||''}">${x.side||'-'}</td>`+
+      `<td>${x.entry_price??'-'}</td><td>${x.usd??'-'}</td>`+
+      `<td>${x.open_price?Number(x.open_price).toFixed(1):'-'}</td>`+
+      `<td>${x.close_price?Number(x.close_price).toFixed(1):'-'}</td>`+
+      `<td class="${x.result||''}">${x.result||'-'}</td><td>${pnl}</td>`+
+      `<td class="muted" style="max-width:230px">${(x.reason||'').slice(0,80)}</td></tr>`;
+  }).join("");
+  document.querySelector("#orders tbody").innerHTML = (d.orders||[]).map(o=>
+    `<tr><td>${fmtT(o.ts)}</td><td class="muted">${o.slug.slice(-10)}</td><td>${o.kind}</td>`+
+    `<td class="${o.side||''}">${o.side||'-'}</td><td>${o.price??'-'}</td><td>${o.usd??'-'}</td>`+
+    `<td><span class="pill ${o.mode}">${o.mode}</span></td><td class="muted">${o.note||''}</td></tr>`).join("");
+}
+async function save(){
+  const payload = {};
+  for (const f of FIELDS){
+    const el = document.getElementById(f);
+    payload[f] = el.type==="checkbox" ? (el.checked?"1":"0") : el.value;
+  }
+  const r = await fetch("/api/settings",{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const d = await r.json();
+  document.getElementById("msg").textContent = d.ok ? "✅ 已保存" : "❌ "+(d.error||"失败");
+  setTimeout(()=>document.getElementById("msg").textContent="",3000);
+  load();
+}
+load(); setInterval(load, 5000);
+</script>

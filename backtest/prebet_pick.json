@@ -1,0 +1,1 @@
+{"strategy": "pre_trend", "params": {"signal": "revert", "lookback_sec": 600, "min_move_pct": 0.2, "lead_sec": 600, "max_price": 0.51}, "entry_delay": -600, "is": {"trades": 164, "win_rate": 56.1, "ev_usd": 0.4998, "net_usd": 81.96, "max_dd": null}, "oos": {"trades": 53, "win_rate": 52.83, "ev_usd": 0.1794, "net_usd": 9.51, "max_dd": null}, "verdict": "✅ 上架"}
