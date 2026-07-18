@@ -1,5 +1,7 @@
 # 🎲 claw-poly
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 **Automated multi-strategy trading bot for Polymarket's BTC 5-minute Up/Down markets** — pre-open betting, disciplined backtesting, a React admin console, and one fortune-telling strategy for fun.
 
 **Polymarket BTC 5 分钟涨跌盘多策略自动交易机器人** —— 开盘前预下注、严格回测纪律、React 管理台,外加一个纯娱乐的命理策略。
@@ -91,6 +93,10 @@ backtest/         data fetchers · simulators · optimizers · reports (REPORT/O
 tests/            unit tests
 ```
 
+### License
+
+MIT — see [LICENSE](LICENSE). Do whatever you like; keep the copyright notice.
+
 ### Disclaimer
 
 5-minute binary markets are fast and close to efficiently priced. Backtests here use optimistic fill models; paper results are the honest referee. **This software is not financial advice; trade at your own risk.**
@@ -179,6 +185,10 @@ frontend/         React 18 + Ant Design 5 + @ant-design/plots(Vite 构建)
 backtest/         数据拉取 · 模拟器 · 调参器 · 报告(REPORT/OPT15/PREBET/COVER)
 tests/            单元测试
 ```
+
+### 开源协议
+
+MIT —— 见 [LICENSE](LICENSE)。可自由使用/修改/商用,保留版权声明即可。
 
 ### 风险提示
 
