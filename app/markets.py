@@ -38,7 +38,7 @@ async def ensure_round(slug, start_ts):
         return row
     db.upsert_round(slug, start_ts=start_ts, end_ts=start_ts + config.ROUND_SEC,
                     token_up=info["token_up"], token_down=info["token_down"],
-                    tick=info["tick"], condition_id=info.get("condition_id") or None)
+                    tick=info["tick"])
     return db.get_round(slug)
 
 
@@ -53,7 +53,7 @@ def capture_open(round_row):
 
 def settle_result(round_row):
     """Local result judgment: close >= open -> 'up' else 'down' (display &
-    paper PnL; live PnL truth is the on-chain resolution)."""
+    simulated PnL; settlement data comes from public market resolution)."""
     open_p = round_row.get("open_price") or btc.price_at(round_row["start_ts"])
     close_p = btc.price_at(round_row["end_ts"]) or btc.price()
     if not open_p or not close_p:

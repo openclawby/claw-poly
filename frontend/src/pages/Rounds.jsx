@@ -64,7 +64,7 @@ export default function Rounds() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [auto, setAuto] = useState(true)
-  const [f, setF] = useState({ state: '', mode: '', side: '', result: '', strategy: '', limit: 300 })
+  const [f, setF] = useState({ state: '', side: '', result: '', strategy: '', limit: 300 })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,7 +99,6 @@ export default function Rounds() {
       <Card size="small">
         <Space wrap>
           {sel('state', STATE_KEYS.map((v) => ({ value: v, label: t(`st.${v}`) })), t('r.filter.state'))}
-          {sel('mode', [{ value: 'paper', label: t('c.paper') }, { value: 'live', label: t('c.live') }], t('c.mode'), 100)}
           {sel('side', [{ value: 'up', label: t('c.up') }, { value: 'down', label: t('c.down') }], t('c.side'), 100)}
           {sel('result', [
             { value: 'up', label: t('r.filter.result.up') },
@@ -113,7 +112,7 @@ export default function Rounds() {
             options={[100, 300, 1000, 3000].map((n) => ({ value: n, label: t('c.last', { n }) }))}
           />
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>{t('c.refresh')}</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => { window.location.href = '/api/export?what=trades' + (f.strategy ? `&strategy=${f.strategy}` : '') + (f.mode ? `&mode=${f.mode}` : '') }}>
+          <Button icon={<DownloadOutlined />} onClick={() => { window.location.href = '/api/export?what=trades' + (f.strategy ? `&strategy=${f.strategy}` : '') }}>
             {t('c.export')}
           </Button>
           <Space size={4}>

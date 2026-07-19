@@ -79,8 +79,8 @@ export default function App() {
             alignItems: 'center', justifyContent: 'space-between', height: 56,
           }}>
             <Space size="middle" wrap>
-              <Tag color={st?.mode === 'live' ? 'volcano' : 'blue'} style={{ fontSize: 13 }}>
-                {st?.mode === 'live' ? t('hdr.live') : t('hdr.paper')}
+              <Tag color="blue" style={{ fontSize: 13 }}>
+                {t('paper.title')}
               </Tag>
               <Typography.Text>
                 BTC <Typography.Text strong style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -96,9 +96,7 @@ export default function App() {
               <Tag color={engineFresh ? 'success' : 'error'}>
                 {engineFresh ? t('hdr.engine.ok') : t('hdr.engine.dead')}
               </Tag>
-              <Tag color={st?.live_ready ? 'success' : 'default'}>
-                {st?.live_ready ? t('hdr.live.ready') : t('hdr.live.nokey')}
-              </Tag>
+              <Tag color="cyan">{t('paper.short')}</Tag>
               <Segmented
                 size="small" value={lang} onChange={setLang}
                 options={[{ label: '中', value: 'zh' }, { label: 'EN', value: 'en' }]}

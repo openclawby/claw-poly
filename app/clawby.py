@@ -88,8 +88,7 @@ async def market_by_slug(slug):
         tick = 0.01
     return {"token_up": str(tokens[0]), "token_down": str(tokens[1]),
             "tick": tick, "accepting": bool(m.get("acceptingOrders")),
-            "neg_risk": bool(m.get("negRisk")),
-            "condition_id": m.get("conditionId") or ""}
+            "neg_risk": bool(m.get("negRisk"))}
 
 
 _PX_CACHE = {}                     # token -> (monotonic_ts, result); shared by

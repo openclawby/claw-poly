@@ -5,13 +5,15 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                    RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 
-from . import btc, clawby, config, db, engine, executor, mystic, strategy
+from . import btc, clawby, config, db, engine, mystic, strategy
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -33,7 +35,9 @@ def _load_json(path):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    config.enforce_paper_only_environment()
     db.init()
+    log.warning("PAPER_ONLY research build | localhost only | no wallet | no live trading")
     tasks = [asyncio.create_task(btc.ws_loop()),
              asyncio.create_task(engine.loop())]
     yield
@@ -42,12 +46,38 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="claw-poly", lifespan=lifespan)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost"],
+)
+
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+@app.middleware("http")
+async def local_write_guard(request: Request, call_next):
+    """【PAPER_ONLY】Reject cross-origin/non-local state-changing requests."""
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin")
+        client_host = request.client.host if request.client else ""
+        if client_host not in _LOCAL_HOSTS:
+            return JSONResponse({"ok": False, "error": "local client required"},
+                                status_code=403)
+        if origin:
+            try:
+                origin_host = (urlparse(origin).hostname or "").lower()
+            except ValueError:
+                origin_host = ""
+            if origin_host not in _LOCAL_HOSTS:
+                return JSONResponse({"ok": False, "error": "local origin required"},
+                                    status_code=403)
+    return await call_next(request)
 
 
 @app.get("/health")
 async def health():
     return {"ok": True, "last_tick": db.get_meta("last_tick"),
-            "btc": btc.price(), "mode": db.get_meta("mode", "paper")}
+            "btc": btc.price(), "mode": "paper", "paper_only": True}
 
 
 @app.get("/", include_in_schema=False)
@@ -70,13 +100,17 @@ async def admin_lite():
 @app.get("/api/rounds")
 async def api_rounds(limit: int = 300, state: str = "", mode: str = "",
                      side: str = "", result: str = "", strategy: str = ""):
-    return {"rounds": db.position_rows(limit, state, mode, side, result, strategy)}
+    if mode not in ("", "paper"):
+        return JSONResponse({"ok": False, "error": "paper mode only"}, status_code=400)
+    return {"rounds": db.position_rows(limit, state, "paper", side, result, strategy)}
 
 
 @app.get("/api/orders")
 async def api_orders(limit: int = 300, kind: str = "", mode: str = "",
                      slug: str = "", strategy: str = ""):
-    return {"orders": db.orders_full(limit, kind, mode, slug, strategy)}
+    if mode not in ("", "paper"):
+        return JSONResponse({"ok": False, "error": "paper mode only"}, status_code=400)
+    return {"orders": db.orders_full(limit, kind, "paper", slug, strategy)}
 
 
 def _csv(rows, cols):
@@ -90,12 +124,14 @@ def _csv(rows, cols):
 
 @app.get("/api/export")
 async def api_export(what: str = "trades", mode: str = "", strategy: str = ""):
+    if mode not in ("", "paper"):
+        return JSONResponse({"ok": False, "error": "paper mode only"}, status_code=400)
     if what == "orders":
-        rows = db.orders_full(3000, mode=mode, strategy=strategy)
+        rows = db.orders_full(3000, mode="paper", strategy=strategy)
         cols = ["id", "ts", "slug", "strategy", "kind", "side", "price", "usd",
                 "order_id", "mode", "note"]
     else:
-        rows = [r for r in db.position_rows(3000, mode=mode, strategy=strategy)
+        rows = [r for r in db.position_rows(3000, mode="paper", strategy=strategy)
                 if r.get("strategy")]
         cols = ["slug", "start_ts", "end_ts", "strategy", "state", "side",
                 "entry_price", "usd", "shares", "open_price", "close_price",
@@ -107,120 +143,24 @@ async def api_export(what: str = "trades", mode: str = "", strategy: str = ""):
 
 @app.get("/api/equity")
 async def api_equity(mode: str = "", points: int = 1440):
-    m = mode or db.get_meta("mode", "paper")
-    return {"mode": m, "equity": db.equity_series(m, points)}
+    if mode not in ("", "paper"):
+        return JSONResponse({"ok": False, "error": "paper mode only"}, status_code=400)
+    return {"mode": "paper", "equity": db.equity_series("paper", points)}
 
 
 @app.get("/api/stats")
 async def api_stats(mode: str = "", strategy: str = ""):
-    m = mode or db.get_meta("mode", "paper")
-    out = db.stats(m, strategy)
-    out["mode"] = m
+    if mode not in ("", "paper"):
+        return JSONResponse({"ok": False, "error": "paper mode only"}, status_code=400)
+    out = db.stats("paper", strategy)
+    out["mode"] = "paper"
     return out
-
-
-def _persist_env(key, value):
-    """Set KEY=value in the project .env (replaces existing/commented line)."""
-    p = ROOT / ".env"
-    lines = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
-    out, done = [], False
-    for ln in lines:
-        s = ln.strip()
-        if (s.startswith(f"{key}=") or s.startswith(f"# {key}=")
-                or s.startswith(f"#{key}=")):
-            if not done:
-                out.append(f"{key}={value}")
-                done = True
-            continue
-        out.append(ln)
-    if not done:
-        out.append(f"{key}={value}")
-    p.write_text("\n".join(out) + "\n", encoding="utf-8")
-
-
-@app.get("/api/private-key")
-async def api_private_key_status():
-    addr = ""
-    if config.PM_PRIVATE_KEY:
-        try:
-            from eth_account import Account
-            addr = Account.from_key(config.PM_PRIVATE_KEY).address
-        except Exception:  # noqa: BLE001
-            addr = "(无法解析)"
-    return {"configured": bool(config.PM_PRIVATE_KEY), "address": addr,
-            "funder": config.PM_FUNDER, "signature_type": config.PM_SIGNATURE_TYPE,
-            "match": bool(addr and config.PM_FUNDER
-                          and addr.lower() == config.PM_FUNDER.lower())}
-
-
-@app.post("/api/private-key")
-async def api_private_key_set(payload: dict):
-    key = str(payload.get("key") or "").strip()
-    if key.lower() in ("", "clear"):
-        _persist_env("PM_PRIVATE_KEY", "")
-        import os
-        os.environ["PM_PRIVATE_KEY"] = ""
-        config.PM_PRIVATE_KEY = ""
-        executor._client = None
-        db.save_settings({"live_enabled": "0"})
-        return {"ok": True, "configured": False, "message": "私钥已清除,实盘已关闭"}
-    if not key.startswith("0x"):
-        key = "0x" + key
-    body = key[2:]
-    if len(body) != 64 or any(c not in "0123456789abcdefABCDEF" for c in body):
-        return JSONResponse({"ok": False, "error": "格式错误:应为 0x + 64 位十六进制"},
-                            status_code=400)
-    try:
-        from eth_account import Account
-        addr = Account.from_key(key).address
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "error": f"私钥无效:{str(exc)[:80]}"},
-                            status_code=400)
-    warning = ""
-    if config.PM_FUNDER and addr.lower() != config.PM_FUNDER.lower() \
-            and config.PM_SIGNATURE_TYPE == 0:
-        warning = (f"注意:推导地址 {addr} 与资金地址 {config.PM_FUNDER} 不一致;"
-                   "EOA 直签模式下将使用推导地址的资金")
-    _persist_env("PM_PRIVATE_KEY", key)
-    import os
-    os.environ["PM_PRIVATE_KEY"] = key
-    config.PM_PRIVATE_KEY = key
-    executor._client = None                    # rebuild live client with new key
-    db.set_meta("clob_creds", "")              # re-derive L2 creds for the new key
-    log.info("private key configured via admin (address %s)", addr)
-    return {"ok": True, "configured": True, "address": addr, "warning": warning}
-
-
-@app.post("/api/private-key/context")
-async def api_private_key_context(payload: dict):
-    """Set funder address + signature type from the admin (persisted to .env)."""
-    import os
-    funder = str(payload.get("funder") or "").strip()
-    if funder and not (funder.startswith("0x") and len(funder) == 42):
-        return JSONResponse({"ok": False, "error": "资金地址格式错误(0x + 40 位十六进制)"},
-                            status_code=400)
-    try:
-        sig = int(payload.get("signature_type", 0))
-        assert sig in (0, 1, 2)
-    except (TypeError, ValueError, AssertionError):
-        return JSONResponse({"ok": False, "error": "签名类型须为 0 / 1 / 2"},
-                            status_code=400)
-    _persist_env("PM_FUNDER", funder)
-    _persist_env("PM_SIGNATURE_TYPE", str(sig))
-    os.environ["PM_FUNDER"] = funder
-    os.environ["PM_SIGNATURE_TYPE"] = str(sig)
-    config.PM_FUNDER = funder
-    config.PM_SIGNATURE_TYPE = sig
-    executor._client = None
-    db.set_meta("clob_creds", "")
-    log.info("funder/signature_type updated via admin: %s / %s", funder, sig)
-    return {"ok": True, "funder": funder, "signature_type": sig}
 
 
 @app.get("/api/strategies")
 async def api_strategies():
     s = db.get_settings()
-    m = db.get_meta("mode", "paper")
+    m = "paper"
     today = {k: db.realized_today(m, k) for k in strategy.STRATEGIES}
     return {"enabled": s["enabled_strategies"], "strat_cfg": s["strat_cfg"],
             "params": s["params"], "meta": strategy.META,
@@ -231,9 +171,9 @@ async def api_strategies():
 
 @app.get("/api/positions/open")
 async def api_positions_open(quotes: int = 1):
-    """Open positions. quotes=0 -> instant (no market data); quotes=1 -> live
+    """Open positions. quotes=0 -> instant (no market data); quotes=1 -> current
     bids for the nearest 16 positions fetched with concurrency 10."""
-    rows = [r for r in db.position_rows(200)
+    rows = [r for r in db.position_rows(200, mode="paper")
             if r.get("strategy") and r["state"] in ("ordered", "holding", "tp_set")]
     rows.sort(key=lambda x: x["start_ts"])
     out = [{**r, "cur_bid": None, "unrealized": None} for r in rows]
@@ -365,7 +305,7 @@ async def api_backtest():
 
 
 def _signal_preview(s):
-    """Live view of what pre_trend would do right now (display only)."""
+    """Current paper-signal preview (display only)."""
     if "pre_trend" not in (s.get("enabled_strategies") or []):
         return None
     p = s["params"]
@@ -389,13 +329,13 @@ def _signal_preview(s):
 @app.get("/api/state")
 async def api_state():
     s = db.get_settings()
-    m = db.get_meta("mode", "paper")
+    m = "paper"
     return {
         "settings": s["_raw"],
         "status": {
             "now": int(time.time()),
             "mode": m,
-            "live_ready": bool(config.PM_PRIVATE_KEY),
+            "paper_only": config.PAPER_ONLY,
             "btc": btc.price(),
             "btc_buffer_min": round(btc.buffer_span() / 60, 1),
             "last_tick": int(db.get_meta("last_tick", "0") or 0),
@@ -404,62 +344,134 @@ async def api_state():
             "preview": _signal_preview(s),
         },
         "rounds": db.recent_rounds(24),
-        "positions": db.recent_positions(48),
+        "positions": db.position_rows(48, mode="paper"),
         "equity": db.equity_series(m, 720),
-        "orders": db.recent_orders(30),
+        "orders": db.orders_full(30, mode="paper"),
     }
+
+
+_SETTING_RANGES = {
+    "usd_per_market": (0.5, 1000.0),
+    "take_profit_pct": (0.0, 500.0),
+    "horizon": (1.0, 100.0),
+    "entry_delay_sec": (0.0, 86400.0),
+    "daily_loss_halt_usd": (0.0, 100000.0),
+    "max_open_usd": (0.0, 100000.0),
+    "overpay_cap": (0.01, 0.99),
+}
+_PARAM_RANGES = {
+    "edge_min": (0.0, 1.0), "price_margin": (0.0, 1.0),
+    "burst_min": (0.0, 100.0), "rev_min": (0.0, 100.0),
+    "momo_window": (1.0, 3600.0), "momo_min": (0.0, 100.0),
+    "lead_sec": (0.0, 32400.0), "lookback_sec": (1.0, 86400.0),
+    "min_move_pct": (0.0, 100.0), "max_price": (0.01, 0.99),
+}
+_ALLOWED_SETTINGS = set(_SETTING_RANGES) | {
+    "strategy", "enabled_strategies", "strat_cfg", "params",
+}
+
+
+def _parse_json_object(value):
+    parsed = value if isinstance(value, dict) else json.loads(value)
+    if not isinstance(parsed, dict):
+        raise ValueError
+    return parsed
 
 
 @app.post("/api/settings")
 async def api_settings(payload: dict):
-    numeric = {"usd_per_market", "take_profit_pct", "horizon", "entry_delay_sec",
-               "daily_loss_halt_usd", "max_open_usd", "overpay_cap"}
+    """Whitelisted paper-strategy settings; trading controls do not exist."""
+    if not isinstance(payload, dict) or any(k not in _ALLOWED_SETTINGS for k in payload):
+        return JSONResponse({"ok": False, "error": "unsupported settings field"},
+                            status_code=400)
     updates = {}
-    for key in config.DEFAULT_SETTINGS:
-        if key not in payload:
-            continue
-        value = payload[key]
-        if key in numeric:
+    for key, value in payload.items():
+        if key in _SETTING_RANGES:
             try:
-                value = float(value)
-                if value < 0:
+                if isinstance(value, bool):
+                    raise ValueError
+                number = float(value)
+                low, high = _SETTING_RANGES[key]
+                if not low <= number <= high:
+                    raise ValueError
+                if key in {"horizon", "entry_delay_sec"} and not number.is_integer():
                     raise ValueError
             except (TypeError, ValueError):
                 return JSONResponse({"ok": False, "error": f"invalid {key}"},
                                     status_code=400)
-            value = f"{value:g}"
+            updates[key] = f"{number:g}"
+        elif key == "strategy":
+            if value not in strategy.STRATEGIES:
+                return JSONResponse({"ok": False, "error": "invalid strategy"},
+                                    status_code=400)
+            updates[key] = value
         elif key == "enabled_strategies":
             try:
-                v = value if isinstance(value, list) else json.loads(value)
-                assert isinstance(v, list)
-                v = [k for k in v if k in strategy.STRATEGIES]
-                value = json.dumps(v)
-            except (ValueError, AssertionError):
+                values = value if isinstance(value, list) else json.loads(value)
+                if (not isinstance(values, list) or any(not isinstance(v, str) for v in values)
+                        or any(v not in strategy.STRATEGIES for v in values)):
+                    raise ValueError
+                updates[key] = json.dumps(list(dict.fromkeys(values)))
+            except (TypeError, ValueError, json.JSONDecodeError):
                 return JSONResponse({"ok": False, "error": "invalid enabled_strategies"},
                                     status_code=400)
         elif key == "strat_cfg":
             try:
-                v = value if isinstance(value, dict) else json.loads(value)
-                assert isinstance(v, dict)
-                for k, c in v.items():
-                    assert k in strategy.STRATEGIES and isinstance(c, dict)
-                    for f in ("usd", "daily_loss", "entry_delay"):
-                        if f in c:
-                            c[f] = max(0.0, float(c[f]))
-                value = json.dumps(v)
-            except (ValueError, AssertionError, TypeError):
+                values = _parse_json_object(value)
+                clean = {}
+                for name, fields in values.items():
+                    if name not in strategy.STRATEGIES or not isinstance(fields, dict):
+                        raise ValueError
+                    if any(field not in {"usd", "daily_loss", "entry_delay"}
+                           for field in fields):
+                        raise ValueError
+                    item = {}
+                    for field, raw in fields.items():
+                        if isinstance(raw, bool):
+                            raise ValueError
+                        number = float(raw)
+                        limits = {"usd": (0.5, 1000.0), "daily_loss": (0.0, 100000.0),
+                                  "entry_delay": (0.0, 86400.0)}[field]
+                        if not limits[0] <= number <= limits[1]:
+                            raise ValueError
+                        item[field] = int(number) if field == "entry_delay" else number
+                    clean[name] = item
+                updates[key] = json.dumps(clean)
+            except (TypeError, ValueError, json.JSONDecodeError):
                 return JSONResponse({"ok": False, "error": "invalid strat_cfg"},
                                     status_code=400)
-        elif key == "auto_redeem":
-            value = "1" if value in (True, "1", "true", "on") else "0"
-        elif key == "live_enabled":
-            on = value in (True, "1", "true", "on")
-            if on and not config.PM_PRIVATE_KEY:
-                return JSONResponse(
-                    {"ok": False, "error": "PM_PRIVATE_KEY 未配置,无法开启实盘"},
-                    status_code=400)
-            value = "1" if on else "0"
-        updates[key] = value
+        elif key == "params":
+            try:
+                values = _parse_json_object(value)
+                if any(name not in set(_PARAM_RANGES) | {"signal", "cover"}
+                       for name in values):
+                    raise ValueError
+                clean = {}
+                for name, raw in values.items():
+                    if name == "signal":
+                        if raw not in {"revert", "momo"}:
+                            raise ValueError
+                        clean[name] = raw
+                    elif name == "cover":
+                        if isinstance(raw, bool):
+                            raise ValueError
+                        number = int(raw)
+                        if number not in (0, 1):
+                            raise ValueError
+                        clean[name] = number
+                    else:
+                        if isinstance(raw, bool):
+                            raise ValueError
+                        number = float(raw)
+                        low, high = _PARAM_RANGES[name]
+                        if not low <= number <= high:
+                            raise ValueError
+                        clean[name] = (int(number) if name in {
+                            "momo_window", "lead_sec", "lookback_sec"} else number)
+                updates[key] = json.dumps(clean)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return JSONResponse({"ok": False, "error": "invalid params"},
+                                    status_code=400)
     db.save_settings(updates)
     return {"ok": True, "saved": list(updates)}
 
