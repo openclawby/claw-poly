@@ -5,18 +5,20 @@
 ## pytest
 
 - 基线：9 passed，1 warning。
-- 新增安全测试：31。
-- 最终：40 total / 40 passed / 0 failed / 0 skipped / 2 warnings。
-- 用时：1.28 秒。
+- 新增安全测试：36。
+- 最终：45 total / 45 passed / 0 failed / 0 skipped / 2 warnings。
+- 全新隔离环境用时：3.67 秒。
 
 ```text
-........................................                                 [100%]
-40 passed, 2 warnings in 1.28s
+.............................................                            [100%]
+45 passed, 2 warnings in 3.67s
 ```
 
 警告：FastAPI TestClient 的 Starlette/httpx 弃用提示；原测试 `asyncio.get_event_loop()` 弃用提示。两者均不是测试失败。
 
-覆盖：固定 paper mode、凭据启动拒绝、Clawby allow、无 Clawby 受限启动、CLOB client fail closed、模拟下单/止盈/撤单、非模拟 ID 拒绝、redeem fail closed、敏感路由 404、settings 敏感字段/类型/范围、Host/Origin、旧 DB 清理、前端敏感控件和源代码执行调用缺失。
+覆盖：固定 paper mode、凭据启动拒绝、Clawby allow、无 Clawby 受限启动、CLOB client fail closed、模拟下单/止盈/撤单、非模拟 ID 拒绝、redeem fail closed、敏感路由 404、settings 敏感字段/类型/范围、整数参数小数拒绝、Host/Origin、旧 DB 清理、前端敏感控件和源代码执行调用缺失。
+
+在全新 Python 3.12.13 虚拟环境中，仅执行 `pip install -r requirements-dev.txt` 后完成上述测试。环境中的 pytest 为 9.1.1；`pip check` 报告无依赖冲突；`py-clob-client` 与 `web3` 均未安装。
 
 测试没有连接真实 Polymarket 交易端点，没有使用真实凭据。
 
@@ -28,8 +30,8 @@
 vite v5.4.21 building for production...
 ✓ 4844 modules transformed.
 dist/index.html                    0.43 kB │ gzip:   0.30 kB
-dist/assets/index-BLDpH0f0.js  2,773.43 kB │ gzip: 847.29 kB
-✓ built in 25.11s
+dist/assets/index-okd9YD7f.js  2,773.38 kB │ gzip: 847.25 kB
+✓ built in 35.65s
 ```
 
 ## 本地启动与 HTTP
@@ -37,6 +39,7 @@ dist/assets/index-BLDpH0f0.js  2,773.43 kB │ gzip: 847.29 kB
 - 仅监听 `127.0.0.1:8643`。
 - `/health` 200：`mode=paper`、`paper_only=true`。
 - `/admin` 200。
+- 小数整数参数 `params.cover=1.9` 返回 400。
 - 启动日志：`PAPER_ONLY research build | localhost only | no wallet | no live trading`。
 - 后台 engine 启动，没有 ClobClient 初始化、远端撤单或赎回。
 - 停止后 `PORT_8643_LISTENING_AFTER_STOP=False`。
@@ -52,6 +55,7 @@ POST /api/live                 404
 POST /api/auto-redeem          404
 GET  /api/private-key          404
 POST /api/settings {live_enabled} 400
+POST /api/settings {params: {cover: 1.9}} 400
 ```
 
 ## 模拟订单冒烟

@@ -366,6 +366,7 @@ _PARAM_RANGES = {
     "lead_sec": (0.0, 32400.0), "lookback_sec": (1.0, 86400.0),
     "min_move_pct": (0.0, 100.0), "max_price": (0.01, 0.99),
 }
+_INTEGER_PARAMS = {"momo_window", "lead_sec", "lookback_sec"}
 _ALLOWED_SETTINGS = set(_SETTING_RANGES) | {
     "strategy", "enabled_strategies", "strat_cfg", "params",
 }
@@ -434,6 +435,8 @@ async def api_settings(payload: dict):
                                   "entry_delay": (0.0, 86400.0)}[field]
                         if not limits[0] <= number <= limits[1]:
                             raise ValueError
+                        if field == "entry_delay" and not number.is_integer():
+                            raise ValueError
                         item[field] = int(number) if field == "entry_delay" else number
                     clean[name] = item
                 updates[key] = json.dumps(clean)
@@ -455,10 +458,10 @@ async def api_settings(payload: dict):
                     elif name == "cover":
                         if isinstance(raw, bool):
                             raise ValueError
-                        number = int(raw)
-                        if number not in (0, 1):
+                        number = float(raw)
+                        if not number.is_integer() or int(number) not in (0, 1):
                             raise ValueError
-                        clean[name] = number
+                        clean[name] = int(number)
                     else:
                         if isinstance(raw, bool):
                             raise ValueError
@@ -466,8 +469,9 @@ async def api_settings(payload: dict):
                         low, high = _PARAM_RANGES[name]
                         if not low <= number <= high:
                             raise ValueError
-                        clean[name] = (int(number) if name in {
-                            "momo_window", "lead_sec", "lookback_sec"} else number)
+                        if name in _INTEGER_PARAMS and not number.is_integer():
+                            raise ValueError
+                        clean[name] = int(number) if name in _INTEGER_PARAMS else number
                 updates[key] = json.dumps(clean)
             except (TypeError, ValueError, json.JSONDecodeError):
                 return JSONResponse({"ok": False, "error": "invalid params"},

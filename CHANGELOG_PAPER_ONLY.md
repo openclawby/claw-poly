@@ -26,12 +26,14 @@
 ### 依赖
 
 - 从 requirements 删除仅用于实盘的 `py-clob-client` 与 `web3`。
+- 新增 `requirements-dev.txt` 并固定 pytest 版本，使全新环境可复现运行测试。
 - 未修改 npm 依赖版本或 package lock；仅生成漏洞审计报告。
 
 ### 测试与报告
 
 - 将原赎回测试改为研究版 fail-closed 断言，其余原有策略测试不变。
-- 新增 31 项 paper-only 安全测试；最终 40 项全部通过。
+- 新增 36 项 paper-only 安全测试；最终 45 项全部通过。
+- 严格拒绝需要整数的研究参数中的小数值，避免静默截断。
 - 新增安全审计、迁移、依赖、测试和变更报告。
 
 ### Git

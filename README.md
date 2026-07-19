@@ -21,9 +21,13 @@ Prerequisites: Python 3.10+ and Node.js 18+.
 
 ```bash
 python -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip install -r requirements-dev.txt
 cd frontend && npm ci && npm run build && cd ..
 ```
+
+`requirements-dev.txt` includes the runtime requirements plus the pinned pytest
+version used by this branch. Runtime-only deployments may install
+`requirements.txt` instead.
 
 `CLAWBY_API_KEY` is an optional read-only market-data credential. Without it,
 the application starts in a restricted local mode but cannot discover markets

@@ -34,6 +34,10 @@ No known vulnerabilities found
 
 当前 requirements：FastAPI、Uvicorn、HTTPX、websockets、zhdate；没有已知漏洞命中。`py-clob-client` 与 `web3` 已从研究版 requirements 删除，因为实盘签名和链上能力已移除。基线 `.venv` 可能仍物理保留旧包，重新创建 `.venv` 后不会安装它们。
 
+测试依赖单独记录在 `requirements-dev.txt`：它包含 `-r requirements.txt` 和固定版本 `pytest==9.1.1`。因此全新开发环境不再依赖旧虚拟环境中由已删除交易包间接带入的 pytest。
+
+整改验证在全新 Python 3.12.13 虚拟环境中完成：仅按 `requirements-dev.txt` 安装后，45 项测试全部通过；`pip check` 返回 `No broken requirements found`；`pip show py-clob-client web3` 确认二者均未安装。
+
 ## 限制
 
 Python requirements 使用最低版本约束而非完整 lock，审计时解析结果会随包索引变化。建议后续生成可审查的 hash lock，并在 CI 中固定运行 `pip-audit` 与 `npm audit`；这属于后续依赖治理，本阶段未改策略或做大规模升级。

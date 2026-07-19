@@ -153,6 +153,23 @@ def test_settings_validate_ranges_and_allow_research_fields(monkeypatch):
     assert saved
 
 
+@pytest.mark.parametrize("payload", [
+    {"strat_cfg": {"pre_trend": {"entry_delay": 1.9}}},
+    {"params": {"cover": 1.9}},
+    {"params": {"momo_window": 2.5}},
+    {"params": {"lead_sec": 2.5}},
+    {"params": {"lookback_sec": 2.5}},
+])
+def test_settings_reject_fractional_integer_fields(monkeypatch, payload):
+    monkeypatch.setattr(
+        db, "save_settings",
+        lambda updates: pytest.fail("invalid settings must not be persisted"),
+    )
+    client = TestClient(main.app, headers={"Host": "127.0.0.1"})
+    response = client.post("/api/settings", json=payload)
+    assert response.status_code == 400
+
+
 def test_local_origin_and_host_guards():
     client = TestClient(main.app, headers={"Host": "127.0.0.1"})
     bad_origin = client.post(
