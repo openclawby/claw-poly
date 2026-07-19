@@ -170,6 +170,24 @@ def test_settings_reject_fractional_integer_fields(monkeypatch, payload):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize("payload", [
+    {"entry_delay_sec": 10**400},
+    {"strat_cfg": {"pre_trend": {"entry_delay": 10**400}}},
+    {"params": {"cover": 10**400}},
+    {"params": {"momo_window": 10**400}},
+    {"take_profit_pct": "NaN"},
+    {"params": {"cover": "Infinity"}},
+])
+def test_settings_reject_overflow_and_nonfinite_numbers(monkeypatch, payload):
+    monkeypatch.setattr(
+        db, "save_settings",
+        lambda updates: pytest.fail("invalid settings must not be persisted"),
+    )
+    client = TestClient(main.app, headers={"Host": "127.0.0.1"})
+    response = client.post("/api/settings", json=payload)
+    assert response.status_code == 400
+
+
 def test_local_origin_and_host_guards():
     client = TestClient(main.app, headers={"Host": "127.0.0.1"})
     bad_origin = client.post(

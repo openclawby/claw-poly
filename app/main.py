@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import math
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -379,6 +380,18 @@ def _parse_json_object(value):
     return parsed
 
 
+def _parse_finite_number(value):
+    if isinstance(value, bool):
+        raise ValueError
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError from exc
+    if not math.isfinite(number):
+        raise ValueError
+    return number
+
+
 @app.post("/api/settings")
 async def api_settings(payload: dict):
     """Whitelisted paper-strategy settings; trading controls do not exist."""
@@ -389,9 +402,7 @@ async def api_settings(payload: dict):
     for key, value in payload.items():
         if key in _SETTING_RANGES:
             try:
-                if isinstance(value, bool):
-                    raise ValueError
-                number = float(value)
+                number = _parse_finite_number(value)
                 low, high = _SETTING_RANGES[key]
                 if not low <= number <= high:
                     raise ValueError
@@ -428,9 +439,7 @@ async def api_settings(payload: dict):
                         raise ValueError
                     item = {}
                     for field, raw in fields.items():
-                        if isinstance(raw, bool):
-                            raise ValueError
-                        number = float(raw)
+                        number = _parse_finite_number(raw)
                         limits = {"usd": (0.5, 1000.0), "daily_loss": (0.0, 100000.0),
                                   "entry_delay": (0.0, 86400.0)}[field]
                         if not limits[0] <= number <= limits[1]:
@@ -456,16 +465,12 @@ async def api_settings(payload: dict):
                             raise ValueError
                         clean[name] = raw
                     elif name == "cover":
-                        if isinstance(raw, bool):
-                            raise ValueError
-                        number = float(raw)
+                        number = _parse_finite_number(raw)
                         if not number.is_integer() or int(number) not in (0, 1):
                             raise ValueError
                         clean[name] = int(number)
                     else:
-                        if isinstance(raw, bool):
-                            raise ValueError
-                        number = float(raw)
+                        number = _parse_finite_number(raw)
                         low, high = _PARAM_RANGES[name]
                         if not low <= number <= high:
                             raise ValueError

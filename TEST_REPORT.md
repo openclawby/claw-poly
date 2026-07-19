@@ -5,18 +5,18 @@
 ## pytest
 
 - 基线：9 passed，1 warning。
-- 新增安全测试：36。
-- 最终：45 total / 45 passed / 0 failed / 0 skipped / 2 warnings。
-- 全新隔离环境用时：3.67 秒。
+- 新增安全测试：42。
+- 最终：51 total / 51 passed / 0 failed / 0 skipped / 2 warnings。
+- 全新隔离环境用时：2.39 秒。
 
 ```text
-.............................................                            [100%]
-45 passed, 2 warnings in 3.67s
+...................................................                      [100%]
+51 passed, 2 warnings in 2.39s
 ```
 
 警告：FastAPI TestClient 的 Starlette/httpx 弃用提示；原测试 `asyncio.get_event_loop()` 弃用提示。两者均不是测试失败。
 
-覆盖：固定 paper mode、凭据启动拒绝、Clawby allow、无 Clawby 受限启动、CLOB client fail closed、模拟下单/止盈/撤单、非模拟 ID 拒绝、redeem fail closed、敏感路由 404、settings 敏感字段/类型/范围、整数参数小数拒绝、Host/Origin、旧 DB 清理、前端敏感控件和源代码执行调用缺失。
+覆盖：固定 paper mode、凭据启动拒绝、Clawby allow、无 Clawby 受限启动、CLOB client fail closed、模拟下单/止盈/撤单、非模拟 ID 拒绝、redeem fail closed、敏感路由 404、settings 敏感字段/类型/范围、整数参数小数拒绝、极大整数溢出与非有限数值拒绝、Host/Origin、旧 DB 清理、前端敏感控件和源代码执行调用缺失。
 
 在全新 Python 3.12.13 虚拟环境中，仅执行 `pip install -r requirements-dev.txt` 后完成上述测试。环境中的 pytest 为 9.1.1；`pip check` 报告无依赖冲突；`py-clob-client` 与 `web3` 均未安装。
 
