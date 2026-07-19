@@ -39,10 +39,10 @@ const STATE_COLOR = {
   pending: 'default', ordered: 'processing', holding: 'processing',
   tp_set: 'gold', settled: 'success', skipped: 'default',
 }
-export const KIND_KEYS = ['buy_limit', 'sell_tp', 'cancel', 'cancel_all', 'fill', 'redeem']
+export const KIND_KEYS = ['buy_limit', 'sell_tp', 'cancel', 'fill']
 const KIND_COLOR = {
-  buy_limit: 'blue', sell_tp: 'gold', cancel: 'default', cancel_all: 'default',
-  fill: 'green', entry: 'blue', tp: 'gold', redeem: 'purple',
+  buy_limit: 'blue', sell_tp: 'gold', cancel: 'default',
+  fill: 'green', entry: 'blue', tp: 'gold',
 }
 
 export function StateTag({ s }) {
@@ -67,7 +67,7 @@ export function ResultTag({ r }) {
 export function ModeTag({ m }) {
   const { t } = useLang()
   if (!m) return <span style={{ color: '#555' }}>—</span>
-  return <Tag color={m === 'live' ? 'volcano' : 'blue'}>{m === 'live' ? t('c.live') : t('c.paper')}</Tag>
+  return <Tag color="blue">{t('c.paper')}</Tag>
 }
 
 export function KindTag({ k }) {

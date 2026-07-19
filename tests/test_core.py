@@ -130,23 +130,9 @@ def test_mystic_tp_modes(monkeypatch):
     assert abs(base.tp_price(0.5, {"take_profit_pct": 20}) - 0.6) < 1e-9
 
 
-def test_redeem_gating_and_query():
+def test_redeem_is_disabled():
     import asyncio
-    from app import config, db, redeem
-    db.init()
-    now = int(time.time())
-    db.upsert_round("btc-updown-5m-900", start_ts=now - 900, end_ts=now - 600,
-                    token_up="u", token_down="d", condition_id="0x" + "ab" * 32)
-    db.insert_position("btc-updown-5m-900", "mystic_east", state="settled",
-                       side="up", pnl=0.9, usd=1.0, mode="live")
-    db.insert_position("btc-updown-5m-900", "pre_trend", state="settled",
-                       side="down", pnl=-1.0, usd=1.0, mode="live")
-    rows = db.unredeemed_live()
-    assert len(rows) == 1 and rows[0]["won"] == 1          # 同盘有赢面 -> 待赎回
-    db.mark_redeemed("btc-updown-5m-900")
-    assert db.unredeemed_live() == []                       # 标记后不再扫描
-    # 门禁:签名类型非 0 时 run_once 必须是空操作(不触网)
-    old = config.PM_SIGNATURE_TYPE
-    config.PM_SIGNATURE_TYPE = 2
-    asyncio.get_event_loop().run_until_complete(redeem.run_once())
-    config.PM_SIGNATURE_TYPE = old
+    import pytest
+    from app import redeem
+    with pytest.raises(RuntimeError, match="On-chain redemption is disabled"):
+        asyncio.run(redeem.run_once())

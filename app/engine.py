@@ -17,7 +17,7 @@ import logging
 import time
 from pathlib import Path
 
-from . import btc, clawby, config, db, executor, markets, redeem, strategy
+from . import btc, clawby, db, executor, markets, strategy
 
 _LOG_FILE = Path(__file__).resolve().parent.parent / "run.log"
 _LOG_MAX = 20 * 1024 * 1024            # 20MB -> keep last 2MB
@@ -194,7 +194,7 @@ def _settle_market(r, now):
 
 async def loop():
     log.info("engine started (tick %ss, multi-strategy)", TICK)
-    await executor.cancel_all()
+    # 【PAPER_ONLY】Startup has no exchange-side cleanup or remote side effects.
     while True:
         started = time.monotonic()
         try:
@@ -264,10 +264,6 @@ async def loop():
                     elif pos["state"] in ("holding", "tp_set"):
                         await _handle_settle(pos, r, settings, now, px_cache)
                         _stats["settle"] += clawby.CALLS - _b
-
-            if (m == "live" and settings.get("auto_redeem", True)
-                    and int(now) % 240 < TICK):
-                await redeem.run_once()
 
             db.record_equity(db.realized_today(m), m)
             db.set_meta("last_tick", int(now))

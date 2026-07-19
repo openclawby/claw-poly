@@ -99,7 +99,7 @@ async def _backfill():
             log.info("btc buffer backfilled: %d pts (%.1f min)",
                      len(_buf), buffer_span() / 60)
     except Exception as exc:  # noqa: BLE001
-        log.warning("btc backfill failed (will warm up live): %s", exc)
+        log.warning("btc backfill failed (will warm up from the public stream): %s", exc)
 
 
 async def ws_loop():

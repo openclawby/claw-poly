@@ -1,24 +1,41 @@
-"""Env secrets + runtime-default settings (seeded into DB, admin-editable)."""
+"""Paper-only runtime configuration and research settings."""
 import os
 
 CLAWBY_API_KEY = os.environ.get("CLAWBY_API_KEY", "")
 CLAWBY_BASE = os.environ.get("CLAWBY_BASE", "https://api.openclawby.com")
 
-PM_PRIVATE_KEY = os.environ.get("PM_PRIVATE_KEY", "")
-PM_FUNDER = os.environ.get("PM_FUNDER", "")
-PM_SIGNATURE_TYPE = int(os.environ.get("PM_SIGNATURE_TYPE", "0"))
-PM_RELAYER_API_KEY = os.environ.get("PM_RELAYER_API_KEY", "")
-
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me")
+# 【PAPER_ONLY】Hard-coded: no environment, database, API, or UI override exists.
+PAPER_ONLY = True
+HOST = "127.0.0.1"
 DB_PATH = os.environ.get("DB_PATH", "pmbot.db")
 PORT = int(os.environ.get("PORT", "8643"))
 
-POLYGON_RPC = os.environ.get("POLYGON_RPC", "https://polygon-rpc.com")
-
-CLOB_HOST = "https://clob.polymarket.com"
-CHAIN_ID = 137
 SERIES_PREFIX = "btc-updown-5m"
 ROUND_SEC = 300
+
+LIVE_TRADING_CREDENTIAL_ENV_VARS = (
+    "PM_PRIVATE_KEY",
+    "PM_FUNDER",
+    "PM_SIGNATURE_TYPE",
+    "PM_RELAYER_API_KEY",
+    "CLOB_API_KEY",
+    "CLOB_API_SECRET",
+    "CLOB_API_PASSPHRASE",
+    "CLOB_SECRET",
+    "CLOB_PASSPHRASE",
+    "POLYMARKET_PRIVATE_KEY",
+)
+
+PAPER_ONLY_CREDENTIAL_ERROR = (
+    "Paper-only research build detected a private key or live-trading "
+    "credential. Remove it before starting."
+)
+
+
+def enforce_paper_only_environment():
+    """Fail closed when a project-known live-trading variable is present."""
+    if any(os.environ.get(name) for name in LIVE_TRADING_CREDENTIAL_ENV_VARS):
+        raise RuntimeError(PAPER_ONLY_CREDENTIAL_ERROR)
 
 DEFAULT_SETTINGS = {
     "usd_per_market": "5",        # fallback stake (per-strategy value wins)
@@ -26,8 +43,6 @@ DEFAULT_SETTINGS = {
     "horizon": "6",               # how many upcoming rounds to manage (30 min)
     "strategy": "pre_trend",      # legacy single-strategy key (kept for compat)
     "entry_delay_sec": "20",      # fallback entry delay (per-strategy wins)
-    "live_enabled": "0",          # master switch — OFF until user flips it
-    "auto_redeem": "1",           # live: auto redeemPositions for resolved wins
     "daily_loss_halt_usd": "30",  # GLOBAL halt: stop opening after this loss/day
     "max_open_usd": "40",         # total exposure cap across all strategies
     "overpay_cap": "0.85",        # never buy a side above this probability

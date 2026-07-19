@@ -1,13 +1,13 @@
 import React, { useContext, useEffect, useReducer, useState } from 'react'
 import {
-  Alert, Card, Col, Empty, Progress, Row, Segmented, Space, Statistic, Table,
+  Alert, Card, Col, Empty, Progress, Row, Space, Statistic, Table,
   Tag, Typography,
 } from 'antd'
 import { Area, Column, Pie } from '@ant-design/plots'
 import dayjs from 'dayjs'
 import { Ctx } from '../App'
 import {
-  apiGet, BLUE, CHART_THEME, fmtTs, GREEN, mmss, ModeTag, num, Pnl, pmUrl, RED,
+  apiGet, BLUE, CHART_THEME, fmtTs, GREEN, mmss, num, Pnl, pmUrl, RED,
   SideTag,
 } from '../util'
 import { useLang } from '../i18n'
@@ -23,15 +23,15 @@ function ActiveRoundCard({ r, posList, nowSec, leadSec, preview }) {
     ? t('d.card.hint', { side: preview.side === 'up' ? t('c.up') : t('c.down') })
       + (preview.tier === 'trigger' ? '⚡' : '')
     : ''
-  const live = posList.filter((p) => ['ordered', 'holding', 'tp_set'].includes(p.state))
-  const pendingLabel = live.length === 0 && !started
+  const openPositions = posList.filter((p) => ['ordered', 'holding', 'tp_set'].includes(p.state))
+  const pendingLabel = openPositions.length === 0 && !started
     ? (preview && !preview.ready
       ? t('d.card.warm')
       : (toDecide > 0
         ? t('d.card.buyin', { t: mmss(toDecide) }) + hint
         : t('d.card.deciding') + hint))
     : null
-  const mainSide = live[0]?.side
+  const mainSide = openPositions[0]?.side
   return (
     <Card size="small" style={{ width: 235 }} styles={{ body: { padding: 12 } }}>
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
@@ -39,8 +39,8 @@ function ActiveRoundCard({ r, posList, nowSec, leadSec, preview }) {
           <a href={pmUrl(r.slug)} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
             {fmtTs(r.start_ts, 'HH:mm')} ↗
           </a>
-          {live.length
-            ? <Tag color="processing">{t('d.card.pos', { n: live.length })}</Tag>
+          {openPositions.length
+            ? <Tag color="processing">{t('d.card.pos', { n: openPositions.length })}</Tag>
             : <Tag>{t('d.card.wait')}</Tag>}
         </Space>
         <Progress
@@ -49,9 +49,9 @@ function ActiveRoundCard({ r, posList, nowSec, leadSec, preview }) {
           format={() => (started ? mmss(remain) : t('d.card.preopen'))}
           strokeColor={mainSide === 'up' ? GREEN : mainSide === 'down' ? RED : BLUE}
         />
-        {live.length > 0 && (
+        {openPositions.length > 0 && (
           <Space size={4} wrap>
-            {live.map((p) => (
+            {openPositions.map((p) => (
               <Tag key={p.strategy} color={p.side === 'up' ? 'green' : 'red'} style={{ fontSize: 11 }}>
                 {p.strategy} {p.side === 'up' ? '↑' : '↓'}@{num(p.entry_price)} ${num(p.usd, 0)}
               </Tag>
@@ -61,9 +61,9 @@ function ActiveRoundCard({ r, posList, nowSec, leadSec, preview }) {
         {pendingLabel && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{pendingLabel}</Typography.Text>
         )}
-        {live[0]?.reason && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: live[0].reason }}>
-            {live[0].reason}
+        {openPositions[0]?.reason && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: openPositions[0].reason }}>
+            {openPositions[0].reason}
           </Typography.Text>
         )}
       </Space>
@@ -74,12 +74,11 @@ function ActiveRoundCard({ r, posList, nowSec, leadSec, preview }) {
 export default function Dashboard() {
   const { t } = useLang()
   const { state } = useContext(Ctx)
-  const [viewMode, setViewMode] = useState(null)
   const [stats, setStats] = useState(null)
   const [, tick] = useReducer((x) => x + 1, 0)
 
   const st = state?.status
-  const mode = viewMode || st?.mode || 'paper'
+  const mode = 'paper'
 
   useEffect(() => {
     let stop = false
@@ -127,7 +126,7 @@ export default function Dashboard() {
         <Col xs={12} md={8} xl={4}>
           <Card>
             <Statistic
-              title={st?.mode === 'live' ? t('d.today.live') : t('d.today.paper')}
+              title={t('d.today.paper')}
               value={st?.realized_today ?? 0} precision={2}
               valueStyle={{ color: (st?.realized_today ?? 0) >= 0 ? GREEN : RED }}
               prefix={(st?.realized_today ?? 0) >= 0 ? '+' : ''} suffix="$"
@@ -137,7 +136,7 @@ export default function Dashboard() {
         <Col xs={12} md={8} xl={4}>
           <Card>
             <Statistic
-              title={mode === 'live' ? t('d.cum.live') : t('d.cum.paper')}
+              title={t('d.cum.paper')}
               value={stats?.total_pnl ?? 0} precision={2}
               valueStyle={{ color: (stats?.total_pnl ?? 0) >= 0 ? GREEN : RED }}
               prefix={(stats?.total_pnl ?? 0) >= 0 ? '+' : ''} suffix="$"
@@ -213,15 +212,7 @@ export default function Dashboard() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card
-            title={t('d.equity')}
-            extra={(
-              <Segmented
-                value={mode} onChange={setViewMode}
-                options={[{ label: t('c.paper'), value: 'paper' }, { label: t('c.live'), value: 'live' }]}
-              />
-            )}
-          >
+          <Card title={t('d.equity')}>
             {curve.length === 0 ? <Empty description={t('d.nosettle')} /> : (
               <Area
                 data={curve} xField="time" yField="pnl" height={280}
@@ -308,7 +299,7 @@ export default function Dashboard() {
               ]}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {t('d.viewing')}<ModeTag m={mode} />
+              {t('d.viewing')}<Tag color="blue">{t('c.paper')}</Tag>
             </Typography.Text>
           </Card>
         </Col>

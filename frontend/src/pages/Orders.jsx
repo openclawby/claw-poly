@@ -11,7 +11,7 @@ export default function Orders() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [auto, setAuto] = useState(true)
-  const [f, setF] = useState({ kind: '', mode: '', strategy: '', limit: 300 })
+  const [f, setF] = useState({ kind: '', strategy: '', limit: 300 })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -40,12 +40,6 @@ export default function Orders() {
             options={KIND_KEYS.map((v) => ({ value: v, label: t(`k.${v}`) }))}
           />
           <Select
-            allowClear placeholder={t('c.mode')} style={{ width: 100 }}
-            value={f.mode || undefined}
-            onChange={(v) => setF({ ...f, mode: v || '' })}
-            options={[{ value: 'paper', label: t('c.paper') }, { value: 'live', label: t('c.live') }]}
-          />
-          <Select
             allowClear placeholder={t('c.strategy')} style={{ width: 130 }}
             value={f.strategy || undefined}
             onChange={(v) => setF({ ...f, strategy: v || '' })}
@@ -57,7 +51,7 @@ export default function Orders() {
             options={[100, 300, 1000, 3000].map((n) => ({ value: n, label: t('c.last', { n }) }))}
           />
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>{t('c.refresh')}</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => { window.location.href = '/api/export?what=orders' + (f.strategy ? `&strategy=${f.strategy}` : '') + (f.mode ? `&mode=${f.mode}` : '') }}>
+          <Button icon={<DownloadOutlined />} onClick={() => { window.location.href = '/api/export?what=orders' + (f.strategy ? `&strategy=${f.strategy}` : '') }}>
             {t('c.export')}
           </Button>
           <Space size={4}>

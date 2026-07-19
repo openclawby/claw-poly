@@ -18,18 +18,16 @@
         padding:4px 10px;margin:0 6px 6px 0;font-size:12.5px}
   .up{color:#3fb950}.down{color:#f85149}.muted{color:#5c6b7c}
   .pill{padding:2px 8px;border-radius:10px;font-size:11px;background:#1f2937}
-  .live{background:#7d1a1a}.paper{background:#1a4d7d}
+  .paper{background:#1a4d7d}
   #msg{margin-left:10px;color:#3fb950}
-  .warn{background:#2d1a00;border:1px solid #7d5a1a;border-radius:8px;padding:10px 12px;
-        font-size:12.5px;margin-bottom:12px;color:#e0b35c}
+  .safe{background:#102a1b;border:1px solid #236b3f;border-radius:8px;padding:10px 12px;
+        font-size:12.5px;margin-bottom:12px;color:#7ee2a8}
 </style>
 
-<h1>🎲 polymarketbot <span id="modepill" class="pill paper">PAPER</span></h1>
+<h1>🎲 claw-poly <span id="modepill" class="pill paper">PAPER ONLY</span></h1>
 <div id="status" class="card">loading…</div>
-<div id="livewarn" class="warn" style="display:none">
-  ⚠️ 实盘就绪检查:.env 缺少 <b>PM_PRIVATE_KEY</b>(签名地址对应的钱包私钥)。
-  自行编辑 .env 填入后重启,再在下方打开实盘开关。首次实盘前请确认 Polymarket
-  账户已对 Exchange 完成 USDC.e 授权且余额充足。
+<div class="safe">
+  <b>模拟研究模式 / PAPER ONLY</b> — 不会创建真实订单，不连接钱包，不使用真实资金。
 </div>
 
 <h2>⚙️ 设置(保存即热生效)</h2>
@@ -48,7 +46,6 @@
   <div class="row"><label>总敞口上限 (USD)</label><input type="number" id="max_open_usd" style="width:100px"></div>
   <div class="row"><label>最高买入概率<small>限价超过此值不下单(overpay 保护)</small></label><input type="number" id="overpay_cap" step="0.01" max="0.99" style="width:100px"></div>
   <div class="row"><label>策略参数 (JSON)</label><input type="text" id="params" style="width:420px;font-family:monospace"></div>
-  <div class="row"><label>🔴 实盘自动交易<small>开启 = 授权真实资金自动挂单</small></label><input type="checkbox" id="live_enabled"></div>
   <button onclick="save()">💾 保存</button><span id="msg"></span>
 </div>
 
@@ -65,20 +62,17 @@
 
 <script>
 const FIELDS = ["usd_per_market","take_profit_pct","horizon","strategy","entry_delay_sec",
-                "daily_loss_halt_usd","max_open_usd","overpay_cap","params","live_enabled"];
+                "daily_loss_halt_usd","max_open_usd","overpay_cap","params"];
 const fmtT = ts => new Date(ts*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
 async function load(){
   const r = await fetch("/api/state"); const d = await r.json();
   for (const f of FIELDS){
     const el = document.getElementById(f); if(!el || document.activeElement===el) continue;
-    if (el.type==="checkbox") el.checked = d.settings[f]==="1";
-    else el.value = d.settings[f] ?? "";
+    el.value = d.settings[f] ?? "";
   }
   const s = d.status;
-  document.getElementById("modepill").textContent = s.mode.toUpperCase();
-  document.getElementById("modepill").className = "pill " + s.mode;
-  document.getElementById("livewarn").style.display = s.live_ready ? "none" : "";
+  document.getElementById("modepill").textContent = "PAPER ONLY";
   const age = s.last_tick ? (s.now - s.last_tick) + "s" : "-";
   document.getElementById("status").innerHTML =
     `<span class="stat">BTC: <b>$${(s.btc||0).toLocaleString()}</b></span>`+
@@ -106,7 +100,7 @@ async function save(){
   const payload = {};
   for (const f of FIELDS){
     const el = document.getElementById(f);
-    payload[f] = el.type==="checkbox" ? (el.checked?"1":"0") : el.value;
+    payload[f] = el.value;
   }
   const r = await fetch("/api/settings",{method:"POST",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});

@@ -14,6 +14,11 @@ from . import config
 
 _lock = threading.Lock()
 _conn = None
+_FORBIDDEN_META_KEYS = frozenset({"clob_creds", "api_secret", "api_passphrase"})
+_LEGACY_LIVE_SETTING_KEYS = (
+    "live_enabled", "auto_redeem", "private_key", "PM_PRIVATE_KEY",
+    "funder", "signature_type", "clob_creds", "api_secret", "api_passphrase",
+)
 
 
 def _migrate_v1(conn):
@@ -92,11 +97,15 @@ def init():
         pcols = [r[1] for r in _conn.execute("PRAGMA table_info(positions)")]
         if "tp_price" not in pcols:
             _conn.execute("ALTER TABLE positions ADD COLUMN tp_price REAL")
-        if "redeemed" not in pcols:
-            _conn.execute("ALTER TABLE positions ADD COLUMN redeemed INTEGER DEFAULT 0")
-        rcols = [r[1] for r in _conn.execute("PRAGMA table_info(rounds)")]
-        if "condition_id" not in rcols:
-            _conn.execute("ALTER TABLE rounds ADD COLUMN condition_id TEXT")
+        # 【PAPER_ONLY】Delete legacy trading controls/credentials without reading them.
+        _conn.execute(
+            f"DELETE FROM settings WHERE key IN ({','.join('?' * len(_LEGACY_LIVE_SETTING_KEYS))})",
+            _LEGACY_LIVE_SETTING_KEYS,
+        )
+        _conn.execute(
+            f"DELETE FROM meta WHERE key IN ({','.join('?' * len(_FORBIDDEN_META_KEYS))})",
+            tuple(_FORBIDDEN_META_KEYS),
+        )
         for k, v in config.DEFAULT_SETTINGS.items():
             _conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
 
@@ -125,8 +134,8 @@ def get_settings():
         "horizon": int(num("horizon")),
         "strategy": s.get("strategy", "pre_trend"),
         "entry_delay_sec": int(num("entry_delay_sec")),
-        "live_enabled": s.get("live_enabled", "0") == "1",
-        "auto_redeem": s.get("auto_redeem", "1") == "1",
+        "live_enabled": False,              # compatibility: never configurable
+        "auto_redeem": False,               # compatibility: chain actions removed
         "daily_loss_halt_usd": num("daily_loss_halt_usd"),
         "max_open_usd": num("max_open_usd"),
         "overpay_cap": num("overpay_cap"),
@@ -217,7 +226,7 @@ def open_usd():
     with _lock:
         row = _conn.execute(
             "SELECT COALESCE(SUM(usd),0) s FROM positions "
-            "WHERE state IN ('ordered','holding','tp_set')").fetchone()
+            "WHERE mode='paper' AND state IN ('ordered','holding','tp_set')").fetchone()
     return float(row["s"])
 
 
@@ -332,35 +341,18 @@ def equity_series(mode, limit=1440):
 
 
 def set_meta(key, value):
+    if key in _FORBIDDEN_META_KEYS:
+        raise ValueError("PAPER_ONLY forbids storing live-trading credentials")
     with _lock, _conn:
         _conn.execute("REPLACE INTO meta(key,value) VALUES(?,?)", (key, str(value)))
 
 
 def get_meta(key, default=""):
+    if key in _FORBIDDEN_META_KEYS:
+        return default
     with _lock:
         row = _conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
     return row["value"] if row else default
-
-
-def unredeemed_live(limit=20):
-    """Settled LIVE positions not yet redeemed, oldest first, round ended >2min.
-    won=1 when any position on that slug won (has something to claim)."""
-    now = int(time.time())
-    with _lock:
-        rows = _conn.execute(
-            "SELECT p.slug, r.condition_id, r.end_ts, "
-            " MAX(CASE WHEN p.pnl > 0 THEN 1 ELSE 0 END) AS won "
-            "FROM positions p JOIN rounds r ON r.slug=p.slug "
-            "WHERE p.mode='live' AND p.state='settled' AND COALESCE(p.redeemed,0)=0 "
-            "AND r.end_ts < ? GROUP BY p.slug ORDER BY r.end_ts LIMIT ?",
-            (now - 120, limit)).fetchall()
-    return [dict(r) for r in rows]
-
-
-def mark_redeemed(slug):
-    with _lock, _conn:
-        _conn.execute("UPDATE positions SET redeemed=1 WHERE slug=? AND mode='live'",
-                      (slug,))
 
 
 def prune():
