@@ -36,7 +36,7 @@ No known vulnerabilities found
 
 测试依赖单独记录在 `requirements-dev.txt`：它包含 `-r requirements.txt` 和固定版本 `pytest==9.1.1`。因此全新开发环境不再依赖旧虚拟环境中由已删除交易包间接带入的 pytest。
 
-整改验证在全新 Python 3.12.13 虚拟环境中完成：仅按 `requirements-dev.txt` 安装后，51 项测试全部通过；`pip check` 返回 `No broken requirements found`；`pip show py-clob-client web3` 确认二者均未安装。
+整改验证在全新 Python 3.12.13 虚拟环境中完成：仅按 `requirements-dev.txt` 安装后，53 项测试全部通过；`pip check` 返回 `No broken requirements found`；`pip show py-clob-client web3` 确认二者均未安装。
 
 ## 限制
 

@@ -413,7 +413,7 @@ async def api_settings(payload: dict):
                                     status_code=400)
             updates[key] = f"{number:g}"
         elif key == "strategy":
-            if value not in strategy.STRATEGIES:
+            if not isinstance(value, str) or value not in strategy.STRATEGIES:
                 return JSONResponse({"ok": False, "error": "invalid strategy"},
                                     status_code=400)
             updates[key] = value

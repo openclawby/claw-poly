@@ -188,6 +188,17 @@ def test_settings_reject_overflow_and_nonfinite_numbers(monkeypatch, payload):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize("value", [[], {}])
+def test_settings_reject_nonstring_strategy(monkeypatch, value):
+    monkeypatch.setattr(
+        db, "save_settings",
+        lambda updates: pytest.fail("invalid settings must not be persisted"),
+    )
+    client = TestClient(main.app, headers={"Host": "127.0.0.1"})
+    response = client.post("/api/settings", json={"strategy": value})
+    assert response.status_code == 400
+
+
 def test_local_origin_and_host_guards():
     client = TestClient(main.app, headers={"Host": "127.0.0.1"})
     bad_origin = client.post(

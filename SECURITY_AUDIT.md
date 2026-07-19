@@ -10,7 +10,7 @@
 | SA-004 | 严重 | `app/redeem.py`、`engine.loop` | 可初始化 Web3 账户、签名并发送 Polygon `redeemPositions` | redeem 改为不可绕过抛错边界；删除 engine 调用；移除 `web3` 依赖 | `test_redeem_always_fails_closed`、源搜索 | 已修复 | 文件保留仅为兼容导入，任何调用都失败 |
 | SA-005 | 严重 | `executor._get_client`、SQLite `meta.clob_creds` | CLOB key/secret/passphrase 明文存 SQLite | 不再创建/读取；DB init 直接 DELETE 旧键；get/set meta 对敏感键 fail closed | legacy DB migration test | 已修复 | 已有数据库物理页可能需另行安全销毁/压缩；本阶段不读取或显示其值 |
 | SA-006 | 高 | `app/config.py` | 运行时读取钱包/交易环境变量 | `PAPER_ONLY=True` 硬编码；启动只检查项目已知交易凭据，存在即统一报错；只允许 Clawby 数据 key | 凭据参数化测试、lifespan 测试、Clawby allow test | 已修复 | 新增交易凭据变量时必须同步拒绝列表 |
-| SA-007 | 严重 | `POST /api/settings` | 通用接口可写 LIVE、自动赎回或未知字段，范围验证弱 | 明确字段白名单、结构/类型/范围验证；所有敏感/未知字段 400 | 9 个敏感/未知字段测试、范围测试 | 已修复 | 本地用户仍可改模拟资金和策略研究参数，这是设计允许行为 |
+| SA-007 | 严重 | `POST /api/settings` | 通用接口可写 LIVE、自动赎回或未知字段，范围验证弱 | 明确字段白名单、结构/类型/范围验证；所有敏感/未知字段 400 | 10 个敏感/未知字段测试；类型、范围、溢出与非有限数值测试 | 已修复 | 本地用户仍可改模拟资金和策略研究参数，这是设计允许行为 |
 | SA-008 | 高 | FastAPI 部署边界 | 无 Trusted Host、Origin/CSRF 或 loopback 写请求保护 | TrustedHost 仅允许 localhost/test；写请求要求本地 Origin 或本地 client；文档固定 `127.0.0.1` | bad Host 400、bad Origin 403、真实监听验证 | 已修复 | 无用户账户系统；同机恶意进程仍可访问本地服务 |
 | SA-009 | 高 | React Settings、App、filters、admin-lite | 暴露私钥、funder、签名、LIVE、赎回入口和误导文案 | 删除控件/API 调用/模式筛选/文案；增加显著 PAPER ONLY 声明 | frontend source test、Vite build | 已修复 | 浏览器缓存旧 bundle 时需硬刷新 |
 | SA-010 | 中 | 读取与 CSV API | 可能返回/导出旧数据库真实模式历史 | API 强制 `mode=paper`，拒绝其他 mode；state 仅取 paper 订单/仓位 | API 代码审计与 settings/route tests | 已修复 | 旧数据库内容仍可能物理存在，但研究 API 不读取/导出该模式 |
