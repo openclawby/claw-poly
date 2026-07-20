@@ -139,6 +139,33 @@ def _persist_env(key, value):
     p.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
+@app.get("/api/relayer-key")
+async def api_relayer_key_status():
+    import os
+    k = os.environ.get("PM_RELAYER_API_KEY", "")
+    return {"configured": bool(k),
+            "masked": (k[:8] + "…" + k[-4:]) if len(k) > 14 else ("已配置" if k else "")}
+
+
+@app.post("/api/relayer-key")
+async def api_relayer_key_set(payload: dict):
+    """Polymarket 免 gas 通道密钥(开通账户/充值提现所需)。"""
+    import os
+    key = str(payload.get("key") or "").strip()
+    if key.lower() == "clear":
+        _persist_env("PM_RELAYER_API_KEY", "")
+        os.environ["PM_RELAYER_API_KEY"] = ""
+        return {"ok": True, "configured": False, "message": "已清除"}
+    if len(key) < 16 or any(c.isspace() for c in key):
+        return JSONResponse({"ok": False, "error": "格式不像有效密钥(至少 16 位、无空格)"},
+                            status_code=400)
+    _persist_env("PM_RELAYER_API_KEY", key)
+    os.environ["PM_RELAYER_API_KEY"] = key
+    log.info("relayer api key configured via admin")
+    return {"ok": True, "configured": True,
+            "message": "已保存;点「一键开通交易账户」时会实际校验"}
+
+
 @app.get("/api/onboard")
 async def api_onboard_status():
     """交易账户体检:是否已开通(部署+授权),供新用户一键开通。"""

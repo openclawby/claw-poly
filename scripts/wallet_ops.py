@@ -11,11 +11,13 @@ PUSD = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 
 
 def main():
+    from eth_account import Account
     from polymarket import PRODUCTION, SecureClient
     from polymarket.auth import RelayerApiKey
 
-    ak = RelayerApiKey(key=os.environ["PM_RELAYER_API_KEY"],
-                       address=os.environ["PM_SIGNER_ADDRESS"])
+    signer = os.environ.get("PM_SIGNER_ADDRESS") or Account.from_key(
+        os.environ["PM_PRIVATE_KEY"]).address        # 缺省从私钥推导
+    ak = RelayerApiKey(key=os.environ["PM_RELAYER_API_KEY"], address=signer)
     c = SecureClient.create(private_key=os.environ["PM_PRIVATE_KEY"],
                             environment=PRODUCTION, api_key=ak)
     cmd = sys.argv[1]

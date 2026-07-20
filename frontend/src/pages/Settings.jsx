@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react'
 import {
-  Alert, Button, Card, Col, Form, Input, InputNumber, message, Popconfirm,
+  Alert, Button, Card, Col, Divider, Form, Input, InputNumber, message, Popconfirm,
   Row, Select, Slider, Space, Switch, Tag, Tooltip, Typography,
 } from 'antd'
 import {
@@ -71,9 +71,31 @@ function OnboardCard({ onChanged }) {
   const { t } = useLang()
   const [st, setSt] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [rk, setRk] = useState(null)
+  const [rkInput, setRkInput] = useState('')
+  const [rkSaving, setRkSaving] = useState(false)
 
-  const load = () => apiGet('/api/onboard').then(setSt).catch(() => {})
+  const load = () => {
+    apiGet('/api/onboard').then(setSt).catch(() => {})
+    apiGet('/api/relayer-key').then(setRk).catch(() => {})
+  }
   useEffect(() => { load() }, [])
+
+  const saveRk = async () => {
+    setRkSaving(true)
+    try {
+      await apiPost('/api/relayer-key', { key: rkInput.trim() })
+      message.success(t('ob.relayer.saved'))
+      setRkInput(''); load()
+    } catch (e) { message.error(String(e.message || e), 6) } finally { setRkSaving(false) }
+  }
+
+  const clearRk = async () => {
+    try {
+      await apiPost('/api/relayer-key', { key: 'clear' })
+      message.success(t('ob.relayer.clear')); load()
+    } catch (e) { message.error(String(e.message || e)) }
+  }
 
   const run = async () => {
     setBusy(true)
@@ -119,6 +141,31 @@ function OnboardCard({ onChanged }) {
             </Button>
           </>
         )}
+        <Divider style={{ margin: '4px 0' }} />
+        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+          <Space size={6} wrap>
+            <Typography.Text strong style={{ fontSize: 12 }}>{t('ob.relayer')}</Typography.Text>
+            <Tooltip title={t('ob.relayer.hint')}>
+              <QuestionCircleOutlined style={{ color: '#888' }} />
+            </Tooltip>
+            {rk?.configured && (
+              <Tag color="success">{t('ob.relayer.ok')} <Typography.Text code style={{ fontSize: 11 }}>{rk.masked}</Typography.Text></Tag>
+            )}
+          </Space>
+          <Space.Compact style={{ width: '100%' }}>
+            <Input.Password placeholder={t('ob.relayer.ph')} value={rkInput}
+              onChange={(e) => setRkInput(e.target.value)} onPressEnter={saveRk} />
+            <Button loading={rkSaving} onClick={saveRk} disabled={!rkInput.trim()}>
+              {t('ob.relayer.save')}
+            </Button>
+            {rk?.configured && (
+              <Popconfirm title={t('ob.relayer.clear')} onConfirm={clearRk}
+                okText={t('c.confirm')} cancelText={t('c.cancel')}>
+                <Button danger>{t('ob.relayer.clear')}</Button>
+              </Popconfirm>
+            )}
+          </Space.Compact>
+        </Space>
         {st.error && <Typography.Text type="danger" style={{ fontSize: 12 }}>{st.error}</Typography.Text>}
       </Space>
     </Card>
