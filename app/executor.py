@@ -7,6 +7,7 @@ never leaves this machine.
 """
 import asyncio
 import logging
+import math
 import time
 
 from . import clawby, config, db
@@ -32,7 +33,7 @@ async def _get_client():
             return _client
 
         def build():
-            from py_clob_client.client import ClobClient
+            from py_clob_client_v2 import ApiCreds, ClobClient
             creds_cached = db.get_meta("clob_creds", "")
             base = dict(host=config.CLOB_HOST, key=config.PM_PRIVATE_KEY,
                         chain_id=config.CHAIN_ID)
@@ -42,11 +43,10 @@ async def _get_client():
             c = ClobClient(**base)
             if creds_cached:
                 import json as _j
-                from py_clob_client.clob_types import ApiCreds
                 d = _j.loads(creds_cached)
                 c.set_api_creds(ApiCreds(d["k"], d["s"], d["p"]))
             else:
-                creds = c.create_or_derive_api_creds()
+                creds = c.create_or_derive_api_key()
                 c.set_api_creds(creds)
                 import json as _j
                 db.set_meta("clob_creds", _j.dumps(
@@ -59,13 +59,14 @@ async def _get_client():
         return _client
 
 
-async def place_limit(round_row, side, usd, limit_price, settings, strategy=""):
-    """GTC limit BUY of the side token. Returns order_id (paper: 'paper:...')."""
+async def place_limit(round_row, side, shares, limit_price, settings, strategy=""):
+    """GTC limit BUY of `shares` shares. Returns order_id (paper: 'paper:...')."""
     m = mode(settings)
     token = round_row["token_up"] if side == "up" else round_row["token_down"]
     tick = round_row.get("tick") or 0.01
     price = max(tick, min(round(round(limit_price / tick) * tick, 4), 1 - tick))
-    shares = round(usd / price, 2)
+    shares = max(5, int(round(shares)))             # 交易所强制最小 5 股/单
+    usd = round(price * shares, 2)
 
     if m == "paper":
         oid = f"paper:{round_row['slug']}:{side}"
@@ -76,11 +77,16 @@ async def place_limit(round_row, side, usd, limit_price, settings, strategy=""):
     client = await _get_client()
 
     def _do():
-        from py_clob_client.clob_types import OrderArgs, OrderType
-        from py_clob_client.order_builder.constants import BUY
-        args = OrderArgs(token_id=token, price=price, size=shares, side=BUY)
-        signed = client.create_order(args)
-        return client.post_order(signed, OrderType.GTC)
+        from py_clob_client_v2 import (OrderArgs, OrderType,
+                                       PartialCreateOrderOptions, Side)
+        ts = f"{tick:g}"
+        opts = (PartialCreateOrderOptions(tick_size=ts)
+                if ts in ("0.1", "0.01", "0.005", "0.0025", "0.001", "0.0001")
+                else None)                      # 非标准 tick 交给 SDK 自查
+        return client.create_and_post_order(
+            order_args=OrderArgs(token_id=token, price=price,
+                                 size=shares, side=Side.BUY),
+            options=opts, order_type=OrderType.GTC)
 
     resp = await asyncio.to_thread(_do)
     oid = (resp or {}).get("orderID") or (resp or {}).get("orderId") or ""
@@ -112,11 +118,16 @@ async def place_tp(round_row, settings, strategy="", tp_price=None):
     client = await _get_client()
 
     def _do():
-        from py_clob_client.clob_types import OrderArgs, OrderType
-        from py_clob_client.order_builder.constants import SELL
-        args = OrderArgs(token_id=token, price=tp_price, size=shares, side=SELL)
-        signed = client.create_order(args)
-        return client.post_order(signed, OrderType.GTC)
+        from py_clob_client_v2 import (OrderArgs, OrderType,
+                                       PartialCreateOrderOptions, Side)
+        ts = f"{tick:g}"
+        opts = (PartialCreateOrderOptions(tick_size=ts)
+                if ts in ("0.1", "0.01", "0.005", "0.0025", "0.001", "0.0001")
+                else None)
+        return client.create_and_post_order(
+            order_args=OrderArgs(token_id=token, price=tp_price,
+                                 size=shares, side=Side.SELL),
+            options=opts, order_type=OrderType.GTC)
 
     resp = await asyncio.to_thread(_do)
     oid = (resp or {}).get("orderID") or ""
@@ -164,7 +175,11 @@ async def cancel_order(order_id):
         return True
     try:
         client = await _get_client()
-        await asyncio.to_thread(client.cancel, order_id)
+        from py_clob_client_v2.clob_types import OrderPayload
+
+        def _cancel():
+            return client.cancel_order(OrderPayload(orderID=order_id))
+        await asyncio.to_thread(_cancel)
         return True
     except Exception as exc:  # noqa: BLE001
         log.warning("cancel %s failed: %s", order_id, exc)

@@ -21,8 +21,30 @@ _last = 0.0
 _gap = asyncio.Lock()
 
 
+async def validate_key(key):
+    """-> (ok, message). Live check against the relay; 401 => bad key."""
+    if not (key or "").strip():
+        return False, "API Key 为空"
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                f"{config.CLAWBY_BASE}/api/relay",
+                headers={"X-API-Key": key.strip(), "Content-Type": "application/json"},
+                json={"name": "polymarket_orderbook",
+                      "params": {"token_id": "1"}})
+        if resp.status_code == 401:
+            return False, "API Key 无效(401),请到 openclawby.com 核对"
+        if resp.status_code in (200, 400, 404, 422, 500, 502):
+            return True, "校验通过"          # 鉴权已过,业务错误与 key 无关
+        return False, f"未知响应 HTTP {resp.status_code}"
+    except httpx.TransportError as exc:
+        return False, f"无法连接 Clawby:{str(exc)[:80]}"
+
+
 async def relay(name, params=None, timeout=30, retries=3):
     global _last, CALLS
+    if not config.CLAWBY_API_KEY:
+        raise RuntimeError("未配置 CLAWBY_API_KEY")
     CALLS += 1
     CALLS_BY[name] = CALLS_BY.get(name, 0) + 1
     for attempt in range(retries):

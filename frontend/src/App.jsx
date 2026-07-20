@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useEffect, useState } from 'react'
-import { Layout, Menu, Segmented, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Layout, Menu, Segmented, Space, Tag, Typography } from 'antd'
 import {
   DashboardOutlined, ExperimentOutlined, FieldTimeOutlined, FundOutlined,
   ProfileOutlined, SettingOutlined, StarOutlined,
@@ -106,6 +106,18 @@ export default function App() {
             </Space>
           </Layout.Header>
           <Layout.Content style={{ margin: 16 }}>
+            {state && st && !st.clawby_ready && (
+              <Alert
+                type="warning" showIcon banner style={{ marginBottom: 16 }}
+                message={t('cb.banner')}
+                action={(
+                  <Button size="small" type="primary"
+                    onClick={() => { window.location.hash = '#/settings' }}>
+                    {t('menu.settings')}
+                  </Button>
+                )}
+              />
+            )}
             <Page />
           </Layout.Content>
         </Layout>

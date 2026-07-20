@@ -102,6 +102,25 @@ async def _backfill():
         log.warning("btc backfill failed (will warm up live): %s", exc)
 
 
+async def _rest_refresh():
+    """Keep price()/buffer alive via REST while the WS is down."""
+    global _last_price, _last_ts
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get("https://api.binance.com/api/v3/ticker/bookTicker",
+                                 params={"symbol": "BTCUSDT"})
+            r.raise_for_status()
+            d = r.json()
+            bid, ask = float(d["bidPrice"]), float(d["askPrice"])
+            if bid and ask:
+                now = time.time()
+                _last_price = (bid + ask) / 2
+                _last_ts = now
+                _buf.append((now, _last_price))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("btc rest fallback failed: %s", exc)
+
+
 async def ws_loop():
     global _last_price, _last_ts
     backoff = 1
@@ -129,5 +148,6 @@ async def ws_loop():
             raise
         except Exception as exc:  # noqa: BLE001
             log.warning("btc ws dropped: %s — retry in %ds", exc, backoff)
+            await _rest_refresh()              # WS 断线期间 REST 兜底,价格不失血
             await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 30)
+            backoff = min(backoff * 2, 10)

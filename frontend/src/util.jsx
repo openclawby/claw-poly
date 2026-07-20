@@ -39,10 +39,10 @@ const STATE_COLOR = {
   pending: 'default', ordered: 'processing', holding: 'processing',
   tp_set: 'gold', settled: 'success', skipped: 'default',
 }
-export const KIND_KEYS = ['buy_limit', 'sell_tp', 'cancel', 'cancel_all', 'fill', 'redeem']
+export const KIND_KEYS = ['buy_limit', 'sell_tp', 'cancel', 'cancel_all', 'fill', 'redeem', 'withdraw', 'deposit']
 const KIND_COLOR = {
   buy_limit: 'blue', sell_tp: 'gold', cancel: 'default', cancel_all: 'default',
-  fill: 'green', entry: 'blue', tp: 'gold', redeem: 'purple',
+  fill: 'green', entry: 'blue', tp: 'gold', redeem: 'purple', withdraw: 'magenta', deposit: 'cyan',
 }
 
 export function StateTag({ s }) {

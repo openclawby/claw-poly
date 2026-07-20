@@ -13,7 +13,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me")
 DB_PATH = os.environ.get("DB_PATH", "pmbot.db")
 PORT = int(os.environ.get("PORT", "8643"))
 
-POLYGON_RPC = os.environ.get("POLYGON_RPC", "https://polygon-rpc.com")
+POLYGON_RPC = os.environ.get("POLYGON_RPC", "https://polygon-bor-rpc.publicnode.com")
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -33,12 +33,12 @@ DEFAULT_SETTINGS = {
     "overpay_cap": "0.85",        # never buy a side above this probability
     # multi-strategy: which strategies run + per-strategy sizing/risk
     "enabled_strategies": '["pre_trend"]',
-    "strat_cfg": '{"pre_trend": {"usd": 1, "daily_loss": 10, "entry_delay": 0},'
-                 ' "fair_value": {"usd": 5, "daily_loss": 15, "entry_delay": 60},'
-                 ' "tick_momo": {"usd": 5, "daily_loss": 10, "entry_delay": 60},'
-                 ' "open_burst": {"usd": 5, "daily_loss": 10, "entry_delay": 60},'
-                 ' "prev_reverse": {"usd": 5, "daily_loss": 10, "entry_delay": 10},'
-                 ' "mystic_east": {"usd": 1, "daily_loss": 51, "entry_delay": 0}}',
+    "strat_cfg": '{"pre_trend": {"shares": 5, "daily_loss": 10, "entry_delay": 0},'
+                 ' "fair_value": {"shares": 10, "daily_loss": 15, "entry_delay": 60},'
+                 ' "tick_momo": {"shares": 10, "daily_loss": 10, "entry_delay": 60},'
+                 ' "open_burst": {"shares": 10, "daily_loss": 10, "entry_delay": 60},'
+                 ' "prev_reverse": {"shares": 10, "daily_loss": 10, "entry_delay": 10},'
+                 ' "mystic_east": {"shares": 5, "daily_loss": 260, "entry_delay": 0}}',
     # per-strategy tunables (JSON, admin-editable)
     "params": '{"edge_min": 0.06, "price_margin": 0.02, "burst_min": 0.05,'
               ' "rev_min": 0.15, "momo_window": 60, "lead_sec": 600,'

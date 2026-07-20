@@ -63,7 +63,8 @@ async def _try_open(st, r, settings, now, halted, px_cache):
         return
     if not r.get("token_up"):
         return
-    if db.open_usd() + st.usd > settings["max_open_usd"]:
+    # 敞口按名义额估算:股数 × 概率上限(粗略上界),防超总敞口
+    if db.open_usd() + st.shares * settings["overpay_cap"] > settings["max_open_usd"]:
         return                                     # wait; may free up next tick
     px = await _px(r["token_up"], px_cache)
     up_price = px["mid"] if px and px["mid"] is not None else None
@@ -76,14 +77,15 @@ async def _try_open(st, r, settings, now, halted, px_cache):
         return
     try:
         oid, price, shares = await executor.place_limit(
-            r, sig.side, st.usd, sig.limit_price, settings, strategy=st.key)
+            r, sig.side, st.shares, sig.limit_price, settings, strategy=st.key)
     except Exception as exc:  # noqa: BLE001
         log.warning("place %s/%s failed: %s", r["slug"], st.key, exc)
         db.insert_position(r["slug"], st.key, state="skipped",
                            reason=f"下单失败:{str(exc)[:80]}", mode=m)
         return
+    actual_usd = round(price * shares, 2)          # 最小单量顶起后以实际名义额记账
     db.insert_position(r["slug"], st.key, state="ordered", side=sig.side,
-                       entry_price=price, usd=st.usd, shares=shares,
+                       entry_price=price, usd=actual_usd, shares=shares,
                        order_id=oid, reason=sig.reason, mode=m)
     log.info("ordered %s [%s] %s @%.2f (%s)", r["slug"], st.key, sig.side,
              price, sig.reason)
@@ -96,7 +98,7 @@ async def _try_open(st, r, settings, now, halted, px_cache):
             ask = round(1 - px["bid"], 4)          # Down 的卖价 = 1 - Up 买价
     if m == "paper" and ask is not None and price >= ask - 1e-9:
         merged = {**r, "side": sig.side, "entry_price": price,
-                  "shares": shares, "usd": st.usd}
+                  "shares": shares, "usd": actual_usd}
         tp = st.tp_price(price, settings)
         if tp is None:                            # 自动结算模式:持仓到期,不挂止盈
             db.update_position(r["slug"], st.key, state="holding")
@@ -198,6 +200,15 @@ async def loop():
     while True:
         started = time.monotonic()
         try:
+            if not config.CLAWBY_API_KEY:      # 未配置数据通道 -> 引擎待命,不交易
+                db.set_meta("blocked", "no_clawby_key")
+                db.set_meta("last_tick", int(time.time()))
+                if int(time.time()) % 300 < TICK:
+                    log.warning("未配置 CLAWBY_API_KEY,引擎待命中"
+                                "(管理台 → 参数设置 → 数据通道 填入后自动开始)")
+                await asyncio.sleep(TICK)
+                continue
+            db.set_meta("blocked", "")
             settings = db.get_settings()
             now = time.time()
             db.set_meta("last_tick", int(now))     # 周期开始即心跳,长周期不误报

@@ -43,7 +43,7 @@ function StrategyCard({ k, meta, pick, data, onReload }) {
 
   useEffect(() => {
     const c = data.strat_cfg?.[k] || {}
-    setCfg({ usd: c.usd ?? 5, daily_loss: c.daily_loss ?? 10, entry_delay: c.entry_delay ?? 20 })
+    setCfg({ shares: c.shares ?? c.usd ?? 5, daily_loss: c.daily_loss ?? 10, entry_delay: c.entry_delay ?? 20 })
     const p = {}
     meta.params.forEach((pd) => { p[pd.key] = data.params?.[pd.key] })
     setParams(p)
@@ -124,8 +124,10 @@ function StrategyCard({ k, meta, pick, data, onReload }) {
           <Row gutter={8}>
             <Col span={8}>
               <Form.Item label={label(t('s.usd'), t('s.usd.hint'))} style={{ marginBottom: 8 }}>
-                <InputNumber min={0.5} max={1000} value={cfg.usd} style={{ width: '100%' }}
-                  onChange={(v) => setCfg({ ...cfg, usd: v })} />
+                <InputNumber
+                  min={5} max={5000} precision={0} value={cfg.shares} style={{ width: '100%' }}
+                  addonAfter={<span style={{ fontSize: 11 }}>≈${((cfg.shares || 5) * 0.52).toFixed(1)}</span>}
+                  onChange={(v) => setCfg({ ...cfg, shares: v })} />
               </Form.Item>
             </Col>
             <Col span={8}>

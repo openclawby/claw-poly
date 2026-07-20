@@ -10,6 +10,227 @@ import { Ctx } from '../App'
 import { apiGet, apiPost } from '../util'
 import { useLang } from '../i18n'
 
+function ClawbyCard({ onChanged }) {
+  const { t } = useLang()
+  const [st, setSt] = useState(null)
+  const [key, setKey] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = () => apiGet('/api/clawby').then(setSt).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const save = async () => {
+    if (!key.trim()) { message.warning(t('cb.empty')); return }
+    setSaving(true)
+    try {
+      await apiPost('/api/clawby', { key: key.trim() })
+      message.success(t('cb.saved'))
+      setKey(''); load(); onChanged()
+    } catch (e) { message.error(String(e.message || e), 6) } finally { setSaving(false) }
+  }
+
+  const clear = async () => {
+    try {
+      await apiPost('/api/clawby', { key: 'clear' })
+      message.success(t('cb.cleared')); load(); onChanged()
+    } catch (e) { message.error(String(e.message || e)) }
+  }
+
+  return (
+    <Card title={t('cb.title')} size="small"
+      style={st && !st.configured ? { borderColor: '#d89614' } : undefined}>
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        {st?.configured ? (
+          <Alert type="success" showIcon message={<Space>{t('cb.ok')}<Typography.Text code>{st.masked}</Typography.Text></Space>} />
+        ) : (
+          <Alert type="warning" showIcon message={t('cb.none')} />
+        )}
+        <Space.Compact style={{ width: '100%' }}>
+          <Input.Password placeholder={t('cb.ph')} value={key}
+            onChange={(e) => setKey(e.target.value)} onPressEnter={save} />
+          <Button type="primary" loading={saving} onClick={save}>{t('cb.save')}</Button>
+        </Space.Compact>
+        <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {t('cb.hint')}{' '}
+            <a href="https://openclawby.com" target="_blank" rel="noreferrer">{t('cb.reg')}</a>
+          </Typography.Text>
+          {st?.configured && (
+            <Popconfirm title={t('cb.clear.confirm')} onConfirm={clear}
+              okText={t('cb.clear')} cancelText={t('c.cancel')}>
+              <Button danger size="small">{t('cb.clear')}</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      </Space>
+    </Card>
+  )
+}
+
+function WalletCard() {
+  const { t } = useLang()
+  const [w, setW] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [pullAmt, setPullAmt] = useState(null)
+  const [pulling, setPulling] = useState(false)
+  const [wdAmt, setWdAmt] = useState(null)
+  const [sending, setSending] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try { setW(await apiGet('/api/wallet')) } catch { /* noop */ }
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const pull = async () => {
+    setPulling(true)
+    try {
+      const r = await apiPost('/api/wallet/pull', { amount: pullAmt })
+      message.success(t('w.pull.done', { tx: (r.tx || '').slice(0, 18) + '…' }), 8)
+      setPullAmt(null); load()
+    } catch (e) { message.error(String(e.message || e), 6) } finally { setPulling(false) }
+  }
+
+  const withdraw = async () => {
+    setSending(true)
+    try {
+      const r = await apiPost('/api/wallet/withdraw', { amount: wdAmt })
+      message.success(t('w.wd.done', { tx: (r.tx || '').slice(0, 18) + '…' }), 8)
+      setWdAmt(null); load()
+    } catch (e) { message.error(String(e.message || e), 6) } finally { setSending(false) }
+  }
+
+  if (w && !w.ready) {
+    return <Card title={t('w.title')} size="small"><Alert type="warning" showIcon message={t('w.notready')} /></Card>
+  }
+
+  const legacyBal = w?.legacy_balance ?? 0
+  const step = (n, text) => (
+    <Space size={6} align="center">
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 20, height: 20, borderRadius: 10, background: '#1668dc',
+        color: '#fff', fontSize: 12, fontWeight: 600,
+      }}>{n}</span>
+      <Typography.Text strong style={{ fontSize: 13 }}>{text}</Typography.Text>
+    </Space>
+  )
+
+  return (
+    <Card
+      title={t('w.title')} size="small"
+      extra={(
+        <Space>
+          <Typography.Text strong style={{ fontSize: 16 }}>
+            {w?.balance != null ? `$${w.balance.toFixed(2)}` : '…'}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('w.balance')}</Typography.Text>
+          <Button size="small" loading={loading} onClick={load}>{t('w.refresh')}</Button>
+        </Space>
+      )}
+    >
+      <Row gutter={[20, 16]}>
+        {/* ---------- 充值:两步 ---------- */}
+        <Col xs={24} lg={12}>
+          <Typography.Title level={5} style={{ marginTop: 0 }}>⬇️ {t('w.dep.title')}</Typography.Title>
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <div>
+              {step(1, t('w.dep.s1'))}
+              <div style={{ marginTop: 6, paddingLeft: 26 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('w.dep.s1.desc')}</Typography.Text>
+                <div style={{ marginTop: 4 }}>
+                  <Button size="small" type="link" style={{ paddingLeft: 0 }}
+                    href="https://polymarket.com" target="_blank" rel="noreferrer">
+                    polymarket.com ↗
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div>
+              {step(2, t('w.dep.s2'))}
+              <div style={{ marginTop: 6, paddingLeft: 26 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {t('w.pull.bal')}: <Typography.Text strong>${legacyBal.toFixed(2)}</Typography.Text>
+                </Typography.Text>
+                <Space.Compact style={{ width: '100%', marginTop: 6 }}>
+                  <InputNumber
+                    style={{ flex: 1 }} min={0.01} max={legacyBal || undefined} prefix="$"
+                    placeholder={t('w.wd.amount')} value={pullAmt} onChange={setPullAmt}
+                    disabled={!legacyBal}
+                  />
+                  <Button onClick={() => setPullAmt(legacyBal)} disabled={!legacyBal}>{t('w.wd.max')}</Button>
+                  <Popconfirm
+                    title={t('w.pull.confirm', { a: pullAmt ?? 0 })}
+                    description={t('w.pull.confirm.desc', { a: pullAmt ?? 0 })}
+                    onConfirm={pull} okText={t('c.confirm')} cancelText={t('c.cancel')}
+                  >
+                    <Button type="primary" loading={pulling} disabled={!pullAmt || !legacyBal}>
+                      {t('w.pull.btn')}
+                    </Button>
+                  </Popconfirm>
+                </Space.Compact>
+                {!legacyBal && (
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>{t('w.pull.empty')}</Typography.Text>
+                )}
+              </div>
+            </div>
+            <Alert
+              type="info" style={{ fontSize: 12 }}
+              message={(
+                <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                  <Typography.Text style={{ fontSize: 12 }}>{t('w.dep.advanced')}</Typography.Text>
+                  <Typography.Text code copyable style={{ fontSize: 11 }}>{w?.address}</Typography.Text>
+                  <Typography.Text type="warning" style={{ fontSize: 11 }}>{t('w.dep.warn')}</Typography.Text>
+                </Space>
+              )}
+            />
+          </Space>
+        </Col>
+
+        {/* ---------- 提现:金额 -> 旧账户 ---------- */}
+        <Col xs={24} lg={12}>
+          <Typography.Title level={5} style={{ marginTop: 0 }}>⬆️ {t('w.wd.title')}</Typography.Title>
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <div>
+              {step(1, t('w.wd.s1'))}
+              <div style={{ marginTop: 6, paddingLeft: 26 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {t('w.wd.to.fixed')}:{' '}
+                  <Typography.Text code copyable style={{ fontSize: 11 }}>{w?.legacy_address || '—'}</Typography.Text>
+                </Typography.Text>
+                <Space.Compact style={{ width: '100%', marginTop: 6 }}>
+                  <InputNumber
+                    style={{ flex: 1 }} min={0.01} max={w?.balance ?? undefined} prefix="$"
+                    placeholder={t('w.wd.amount')} value={wdAmt} onChange={setWdAmt}
+                  />
+                  <Button onClick={() => setWdAmt(w?.balance ?? null)}>{t('w.wd.max')}</Button>
+                  <Popconfirm
+                    title={t('w.wd.confirm')}
+                    description={<div style={{ maxWidth: 340 }}>{t('w.wd.confirm.desc2', { a: wdAmt ?? 0 })}</div>}
+                    onConfirm={withdraw} okText={t('c.confirm')} cancelText={t('c.cancel')}
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button type="primary" danger loading={sending} disabled={!wdAmt || !w?.legacy_address}>
+                      {t('w.wd.btn')}
+                    </Button>
+                  </Popconfirm>
+                </Space.Compact>
+              </div>
+            </div>
+            <div>
+              {step(2, t('w.wd.s2'))}
+              <div style={{ marginTop: 6, paddingLeft: 26 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t('w.wd.s2.desc')}</Typography.Text>
+              </div>
+            </div>
+          </Space>
+        </Col>
+      </Row>
+    </Card>
+  )
+}
+
 function PrivateKeyCard({ onChanged }) {
   const { t } = useLang()
   const [status, setStatus] = useState(null)
@@ -109,6 +330,7 @@ function PrivateKeyCard({ onChanged }) {
                 { value: 0, label: t('g.key.sig.0') },
                 { value: 1, label: t('g.key.sig.1') },
                 { value: 2, label: t('g.key.sig.2') },
+                { value: 3, label: t('g.key.sig.3') },
               ]}
             />
           </Col>
@@ -116,7 +338,7 @@ function PrivateKeyCard({ onChanged }) {
             <Button block onClick={saveCtx}>{t('g.key.ctx.save')}</Button>
           </Col>
         </Row>
-        {(ctx.signature_type === 1 || ctx.signature_type === 2) && (
+        {(ctx.signature_type === 1 || ctx.signature_type === 2 || ctx.signature_type === 3) && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>ℹ️ {t('g.key.proxy.note')}</Typography.Text>
         )}
         <Space style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -211,6 +433,8 @@ export default function Settings() {
   return (
     <Form form={form} layout="vertical" initialValues={initial || {}}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <ClawbyCard onChanged={refresh} />
+
         <Alert type="info" showIcon message={t('g.moved')} />
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
@@ -251,6 +475,8 @@ export default function Settings() {
             </Card>
           </Col>
         </Row>
+
+        <WalletCard />
 
         <PrivateKeyCard onChanged={refresh} />
 

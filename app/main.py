@@ -11,7 +11,8 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                    RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 
-from . import btc, clawby, config, db, engine, executor, mystic, strategy
+from . import (addresses, btc, clawby, config, db, engine, executor, mystic,
+               strategy)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -138,6 +139,34 @@ def _persist_env(key, value):
     p.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
+@app.get("/api/clawby")
+async def api_clawby_status():
+    k = config.CLAWBY_API_KEY or ""
+    return {"configured": bool(k),
+            "masked": (k[:6] + "…" + k[-4:]) if len(k) > 12 else ("已配置" if k else ""),
+            "base": config.CLAWBY_BASE}
+
+
+@app.post("/api/clawby")
+async def api_clawby_set(payload: dict):
+    key = str(payload.get("key") or "").strip()
+    if key.lower() == "clear":
+        _persist_env("CLAWBY_API_KEY", "")
+        import os
+        os.environ["CLAWBY_API_KEY"] = ""
+        config.CLAWBY_API_KEY = ""
+        return {"ok": True, "configured": False, "message": "已清除,引擎已暂停"}
+    ok, msg = await clawby.validate_key(key)
+    if not ok:
+        return JSONResponse({"ok": False, "error": msg}, status_code=400)
+    _persist_env("CLAWBY_API_KEY", key)
+    import os
+    os.environ["CLAWBY_API_KEY"] = key
+    config.CLAWBY_API_KEY = key
+    log.info("Clawby API key configured via admin")
+    return {"ok": True, "configured": True, "message": msg}
+
+
 @app.get("/api/private-key")
 async def api_private_key_status():
     addr = ""
@@ -201,9 +230,9 @@ async def api_private_key_context(payload: dict):
                             status_code=400)
     try:
         sig = int(payload.get("signature_type", 0))
-        assert sig in (0, 1, 2)
+        assert sig in (0, 1, 2, 3)
     except (TypeError, ValueError, AssertionError):
-        return JSONResponse({"ok": False, "error": "签名类型须为 0 / 1 / 2"},
+        return JSONResponse({"ok": False, "error": "签名类型须为 0 / 1 / 2 / 3"},
                             status_code=400)
     _persist_env("PM_FUNDER", funder)
     _persist_env("PM_SIGNATURE_TYPE", str(sig))
@@ -259,6 +288,116 @@ async def api_positions_open(quotes: int = 1):
     return {"positions": out, "ts": int(time.time()), "quoted": quoted}
 
 
+SDK_PY = ROOT / ".venv-sdk" / "bin" / "python"
+WALLET_OPS = ROOT / "scripts" / "wallet_ops.py"
+PUSD_TOKEN = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+
+
+async def _wallet_ops(*args, timeout=180):
+    proc = await asyncio.create_subprocess_exec(
+        str(SDK_PY), str(WALLET_OPS), *args,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise RuntimeError("钱包操作超时")
+    if proc.returncode != 0:
+        raise RuntimeError((err or out).decode(errors="replace")[-300:])
+    return json.loads(out.decode().strip().splitlines()[-1])
+
+
+async def _clob_balance():
+    """Fast in-process balance via the live CLOB client."""
+    from py_clob_client_v2.clob_types import AssetType, BalanceAllowanceParams
+    client = await executor._get_client()
+
+    def _q():
+        return client.get_balance_allowance(
+            BalanceAllowanceParams(asset_type=AssetType.COLLATERAL))
+    r = await asyncio.to_thread(_q)
+    return round(int(r.get("balance", 0)) / 1e6, 2)
+
+
+@app.get("/api/wallet")
+async def api_wallet():
+    signer = addresses.signer_address(config.PM_PRIVATE_KEY)
+    legacy = addresses.legacy_safe_address(signer)
+    out = {"ready": bool(config.PM_PRIVATE_KEY), "address": config.PM_FUNDER,
+           "signature_type": config.PM_SIGNATURE_TYPE, "balance": None,
+           "signer": signer,
+           # 网页端旧代理钱包(同一私钥控制);与当前交易地址不同才提示可回转
+           "legacy_address": legacy if legacy.lower() != (config.PM_FUNDER or "").lower() else "",
+           "can_withdraw": SDK_PY.exists() and bool(
+               __import__("os").environ.get("PM_RELAYER_API_KEY"))}
+    if config.PM_PRIVATE_KEY:
+        try:
+            out["balance"] = await _clob_balance()
+        except Exception as exc:  # noqa: BLE001
+            out["error"] = str(exc)[:150]
+        if legacy:
+            out["legacy_balance"] = await asyncio.to_thread(
+                addresses.pusd_balance, legacy, config.POLYGON_RPC)
+    return out
+
+
+@app.post("/api/wallet/pull")
+async def api_wallet_pull(payload: dict):
+    """Move funds from the legacy website wallet into the trading wallet."""
+    try:
+        amt = round(float(payload.get("amount") or 0), 2)
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "error": "金额格式错误"}, status_code=400)
+    if amt < 0.01:
+        return JSONResponse({"ok": False, "error": "金额过小"}, status_code=400)
+    legacy = addresses.legacy_safe_address(
+        addresses.signer_address(config.PM_PRIVATE_KEY))
+    if not legacy or legacy.lower() == (config.PM_FUNDER or "").lower():
+        return JSONResponse({"ok": False, "error": "无可用的旧账户"}, status_code=400)
+    bal = await asyncio.to_thread(addresses.pusd_balance, legacy, config.POLYGON_RPC)
+    if amt > bal + 1e-9:
+        return JSONResponse({"ok": False, "error": f"旧账户余额不足(可用 ${bal})"},
+                            status_code=400)
+    try:
+        r = await _wallet_ops("pull", legacy, f"{amt:.6f}")
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:250]}, status_code=500)
+    db.log_order("-", "deposit", usd=amt, mode="live",
+                 note=f"from legacy {legacy} tx={r.get('tx')}")
+    log.info("pull $%s from legacy tx=%s", amt, r.get("tx"))
+    return r
+
+
+@app.post("/api/wallet/withdraw")
+async def api_wallet_withdraw(payload: dict):
+    to = str(payload.get("to") or "").strip()
+    if not to:                                     # 缺省提到网页端旧账户
+        to = addresses.legacy_safe_address(
+            addresses.signer_address(config.PM_PRIVATE_KEY))
+    try:
+        amt = round(float(payload.get("amount") or 0), 2)
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "error": "金额格式错误"}, status_code=400)
+    if not (to.startswith("0x") and len(to) == 42
+            and all(ch in "0123456789abcdefABCDEF" for ch in to[2:])):
+        return JSONResponse({"ok": False, "error": "无有效的收款地址"},
+                            status_code=400)
+    if amt < 0.01:
+        return JSONResponse({"ok": False, "error": "金额过小"}, status_code=400)
+    try:
+        bal = await _clob_balance()
+        if amt > bal + 1e-9:
+            return JSONResponse({"ok": False, "error": f"余额不足(可用 ${bal})"},
+                                status_code=400)
+        r = await _wallet_ops("withdraw", to, f"{amt:.6f}")
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:250]}, status_code=500)
+    db.log_order("-", "withdraw", usd=amt, mode="live",
+                 note=f"to={to} tx={r.get('tx')}")
+    log.info("withdraw $%s -> %s tx=%s", amt, to, r.get("tx"))
+    return r
+
+
 @app.get("/api/mystic")
 async def api_mystic():
     try:
@@ -292,7 +431,7 @@ async def api_mystic():
             "max_price": plan.get("max_price", 0.55),
             "tp_mode": plan.get("tp_mode", "settle"),
             "tp_price": plan.get("tp_price"),
-            "usd": (s["strat_cfg"].get("mystic_east") or {}).get("usd", 1),
+            "shares": (s["strat_cfg"].get("mystic_east") or {}).get("shares", 5),
             "placed": sum(1 for x in slugs if x in by),
             "filled": filled,
             "done": sum(1 for x in slugs
@@ -310,7 +449,7 @@ async def api_mystic_start(payload: dict):
     gender = str(payload.get("gender") or "男").strip()
     place = str(payload.get("birthplace") or "").strip()
     try:
-        usd = max(0.5, min(100.0, float(payload.get("usd") or 1)))
+        shares = max(5, min(500, int(payload.get("shares") or payload.get("usd") or 5)))
         cap = max(0.51, min(0.85, float(payload.get("max_price") or 0.55)))
         count = max(1, min(100, int(payload.get("count") or 50)))
         tp_mode = str(payload.get("tp_mode") or "settle")
@@ -334,7 +473,8 @@ async def api_mystic_start(payload: dict):
     db.set_meta("mystic_plan", json.dumps(plan, ensure_ascii=False))
     s = db.get_settings()
     cfg = s["strat_cfg"]
-    cfg["mystic_east"] = {"usd": usd, "daily_loss": round(usd * count + 1, 2),
+    cfg["mystic_east"] = {"shares": shares,
+                          "daily_loss": round(shares * count * 1.0 + 1, 2),
                           "entry_delay": 0}
     en = s["enabled_strategies"]
     if "mystic_east" not in en:
@@ -344,7 +484,8 @@ async def api_mystic_start(payload: dict):
     log.info("mystic_east 命盘生成:%s 50盘 seed=%s", plan["profile"]["name"],
              plan["seed"])
     return {"ok": True, "seed": plan["seed"], "fate": plan["fate"],
-            "almanac": plan["almanac"], "total_cost": round(usd * count, 2),
+            "almanac": plan["almanac"], "shares": shares,
+            "est_cost": round(shares * 0.55 * count, 2),
             "count": count, "first_ts": first, "preview": plan["entries"][:10]}
 
 
@@ -401,6 +542,7 @@ async def api_state():
             "last_tick": int(db.get_meta("last_tick", "0") or 0),
             "halted": db.get_meta("halted", "") == "1",
             "realized_today": db.realized_today(m),
+            "clawby_ready": bool(config.CLAWBY_API_KEY),
             "preview": _signal_preview(s),
         },
         "rounds": db.recent_rounds(24),
@@ -443,7 +585,9 @@ async def api_settings(payload: dict):
                 assert isinstance(v, dict)
                 for k, c in v.items():
                     assert k in strategy.STRATEGIES and isinstance(c, dict)
-                    for f in ("usd", "daily_loss", "entry_delay"):
+                    if "shares" in c:
+                        c["shares"] = max(5, int(float(c["shares"])))   # 交易所地板
+                    for f in ("daily_loss", "entry_delay"):
                         if f in c:
                             c[f] = max(0.0, float(c[f]))
                 value = json.dumps(v)

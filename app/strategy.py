@@ -32,7 +32,8 @@ class Base:
         self.s = settings
         self.p = settings.get("params", {})
         c = cfg or {}
-        self.usd = float(c.get("usd", settings.get("usd_per_market", 5)))
+        # 交易所按股数管控,最小 5 股/单;金额 = 股数 × 成交价(下单时算)
+        self.shares = max(5, int(c.get("shares", c.get("usd", 5) or 5)))
         self.daily_loss = float(c.get("daily_loss",
                                       settings.get("daily_loss_halt_usd", 30)))
         self.entry_delay = int(c.get("entry_delay",

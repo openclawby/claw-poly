@@ -15,7 +15,7 @@ def test_db_settings_seed_and_positions():
     s = db.get_settings()
     assert s["usd_per_market"] == 5.0 and s["horizon"] == 6 and not s["live_enabled"]
     assert s["enabled_strategies"] == ["pre_trend"]
-    assert s["strat_cfg"]["pre_trend"]["usd"] == 1
+    assert s["strat_cfg"]["pre_trend"]["shares"] == 5
     now = int(time.time())
     db.upsert_round("btc-updown-5m-100", start_ts=now - 300, end_ts=now,
                     token_up="u", token_down="d")
@@ -65,8 +65,11 @@ def test_paper_order_arith():
     from app import db, executor
     r = {"slug": "s", "token_up": "u", "token_down": "d", "tick": 0.01}
     oid, price, shares = asyncio.get_event_loop().run_until_complete(
-        executor.place_limit(r, "up", 5.0, 0.634, {"live_enabled": False}))
-    assert oid.startswith("paper") and price == 0.63 and abs(shares - 5/0.63) < 0.02
+        executor.place_limit(r, "up", 12, 0.634, {"live_enabled": False}))
+    assert oid.startswith("paper") and price == 0.63 and shares == 12
+    oid, price, shares = asyncio.get_event_loop().run_until_complete(
+        executor.place_limit(r, "up", 2, 0.634, {"live_enabled": False}))
+    assert shares == 5                                  # 交易所地板:最小 5 股
 
 
 def test_pre_trend_preopen_logic(monkeypatch):
@@ -150,3 +153,25 @@ def test_redeem_gating_and_query():
     config.PM_SIGNATURE_TYPE = 2
     asyncio.get_event_loop().run_until_complete(redeem.run_once())
     config.PM_SIGNATURE_TYPE = old
+
+
+def test_legacy_safe_derivation():
+    from app.addresses import legacy_safe_address
+    # 官方 CREATE2 常量推导必须可复现;空/非法输入安全返回空串
+    a = legacy_safe_address("0x0000000000000000000000000000000000000001")
+    assert a == "0x766b6851A199BF91Ae3fa13B1cfaC5187355118f"
+    assert legacy_safe_address("") == "" and legacy_safe_address("0x12") == ""
+
+
+def test_clawby_key_required(monkeypatch):
+    import asyncio
+    from app import clawby, config
+    # 空 key 必须本地快速失败,不触网
+    assert asyncio.get_event_loop().run_until_complete(clawby.validate_key(""))[0] is False
+    old = config.CLAWBY_API_KEY
+    config.CLAWBY_API_KEY = ""
+    try:
+        with __import__("pytest").raises(RuntimeError, match="CLAWBY_API_KEY"):
+            asyncio.get_event_loop().run_until_complete(clawby.relay("x"))
+    finally:
+        config.CLAWBY_API_KEY = old

@@ -14,7 +14,7 @@ export default function Mystic() {
   const [data, setData] = useState(null)
   const [form, setForm] = useState({
     name: '', birth: '1995-06-15', gender: '男', birthplace: '',
-    count: 50, usd: 1, max_price: 0.55, tp_mode: 'settle', tp_price: 0.8,
+    count: 50, shares: 5, max_price: 0.55, tp_mode: 'settle', tp_price: 0.8,
   })
   const [starting, setStarting] = useState(false)
 
@@ -93,7 +93,7 @@ export default function Mystic() {
                 { label: t('m.fate'), children: `${plan.fate?.year_ganzhi} ${plan.fate?.element} · ${t('m.animal')}${plan.fate?.animal}` },
                 { label: t('m.seed'), children: <Typography.Text code copyable>{plan.seed}</Typography.Text> },
                 { label: t('m.day'), children: `${plan.day?.day_ganzhi} · ${plan.day?.jianxing} · ${plan.day?.is_lucky_day ? t('m.lucky') : t('m.unlucky')}` },
-                { label: t('m.perusd'), children: `$${plan.usd}` },
+                { label: t('m.perusd'), children: `${plan.shares ?? plan.usd} 股` },
                 { label: t('m.cap'), children: plan.max_price },
                 {
                   label: t('m.tp'),
@@ -198,10 +198,10 @@ export default function Mystic() {
                   onChange={(v) => setForm({ ...form, count: v })} />
               </Col>
               <Col xs={12} md={3}>
-                {fieldLabel(t('m.usd'))}
-                <InputNumber style={{ width: '100%' }} min={0.5} max={100} prefix="$"
-                  value={form.usd} addonAfter={t('m.usd.unit')}
-                  onChange={(v) => setForm({ ...form, usd: v })} />
+                {fieldLabel(t('m.usd'), t('m.usd.hint'))}
+                <InputNumber style={{ width: '100%' }} min={5} max={500} precision={0}
+                  value={form.shares} addonAfter={t('m.usd.unit')}
+                  onChange={(v) => setForm({ ...form, shares: v })} />
               </Col>
               <Col xs={12} md={3}>
                 {fieldLabel(t('m.maxp'), t('m.maxp.hint'))}
@@ -234,7 +234,8 @@ export default function Mystic() {
               description={t('m.start.desc', {
                 n: form.count || 1,
                 h: (((form.count || 1) * 5) / 60).toFixed(1),
-                c: ((form.usd || 1) * (form.count || 1)).toFixed(0),
+                sh: form.shares || 5,
+                c: ((form.shares || 5) * 0.55 * (form.count || 1)).toFixed(0),
               })}
               onConfirm={start} okText={t('m.start.ok')} cancelText={t('m.start.no')}
             >
