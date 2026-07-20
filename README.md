@@ -81,14 +81,16 @@ Backtests (optional, but read the reports before trading):
 
 ### Going live (real money — read carefully)
 
-Polymarket migrated to a **deposit-wallet** account system in 2026. Your EOA signs; a contract wallet derived from it holds the funds and places orders. All three addresses below come from the same private key and are re-derivable at any time — only the key needs backing up.
+Since 2026 Polymarket requires a **deposit wallet** to place orders: your EOA signs, and a contract wallet derived from that key holds funds and trades. A wallet-login account on polymarket.com is **not** automatically usable by the API — if the CLOB answers *"maker address not allowed, please use the deposit wallet flow"*, that is exactly this gap.
 
-1. **Settings → Wallet private key**: paste your key. It is verified locally (address derivation), written to your local `.env`, effective without restart.
-2. Set **funder address** and **signature type**:
-   - `0` EOA · `1` Magic/email · `2` legacy web proxy wallet · `3` **deposit wallet (current system)**
-   - If the CLOB rejects orders with *"maker address not allowed"*, you are on the old system — create/derive the deposit wallet with the official SDK and switch to type 3.
+Every address below is derived from the same private key and re-derivable at any time — **only the key needs backing up.**
+
+1. **Settings → Wallet private key** — paste your key. Verified locally (address derivation), written to your local `.env`, effective without restart.
+2. **Settings → Trading account → one-click set up** — deploys the deposit wallet (gasless), enables trading approvals, and writes the order identity (funder + signature type 3) for you. Requires `PM_RELAYER_API_KEY` in `.env` (Polymarket's gasless relayer key) and the `.venv-sdk` from install step 2. The card shows exactly what is missing, and the whole action is idempotent — safe to re-run.
 3. **Fund it** — Settings → Deposit: log in to polymarket.com, deposit as usual (card / exchange / bridge), then click **move to trading wallet**. Advanced users can send USDC straight to the trading address (**Polygon network only**).
-4. Flip the **LIVE** switch. Start with the 5-share minimum and compare real fills against paper before sizing up.
+4. Flip the **LIVE** switch. Start at the 5-share minimum and compare real fills with paper before sizing up.
+
+> **Two accounts, one key.** The website may keep showing your legacy proxy wallet with a $0 balance while funds live in the deposit wallet — that is expected during Polymarket's migration. Do not use the website's Deposit button while they are split: money lands in the legacy wallet, and you have to move it in from Settings → Deposit before the bot can use it.
 
 ![Open positions](docs/screenshots/positions.png)
 
@@ -193,14 +195,16 @@ set -a; source .env; set +a
 
 ### 切实盘(真金白银,务必细读)
 
-Polymarket 在 2026 年换成了**充值钱包**账户体系:你的 EOA 负责签名,由它推导出的合约钱包持有资金并下单。下面三个地址都出自同一把私钥、随时可重新推导 —— **只需要备份私钥**。
+Polymarket 自 2026 年起要求用**充值钱包**下单:你的 EOA 负责签名,由这把私钥推导出的合约钱包持有资金并交易。**在 polymarket.com 用钱包登录过 ≠ API 能直接交易** —— 若下单报 *"maker address not allowed, please use the deposit wallet flow"*,差的就是这一步。
 
-1. **参数设置 → 钱包私钥**:粘贴私钥,本地校验推导地址后写入本机 `.env`,免重启生效。
-2. 设置**资金地址**与**签名类型**:
-   - `0` EOA 直签 · `1` 邮箱 Magic · `2` 旧网页代理钱包 · `3` **充值钱包(现行体系)**
-   - 若下单报 *"maker address not allowed"*,说明你还在旧体系:用官方 SDK 创建/推导充值钱包后切到类型 3。
-3. **入金** —— 参数设置 → 充值:登录 polymarket.com 按习惯方式充值(银行卡/交易所/跨链),回到管理台点**转入交易账户**;进阶用户可直接向交易账户地址转 USDC(**必须走 Polygon 网络**)。
-4. 打开**实盘开关**。建议先用 5 股最小单量试跑,对比实盘成交与模拟盘差距后再加仓。
+下面所有地址都出自同一把私钥、随时可重新推导 —— **只需要备份私钥**。
+
+1. **参数设置 → 钱包私钥** —— 粘贴私钥,本地校验推导地址后写入本机 `.env`,免重启生效。
+2. **参数设置 → 交易账户 → 一键开通** —— 自动免 gas 部署充值钱包、开通交易授权、写入下单身份(资金地址 + 签名类型 3)。需要 `.env` 里有 `PM_RELAYER_API_KEY`(Polymarket 免 gas 通道密钥)以及安装第 2 步的 `.venv-sdk`;卡片会明确列出缺什么。该操作幂等,重复点击安全。
+3. **入金** —— 参数设置 → 充值:登录 polymarket.com 按习惯方式充值(银行卡/交易所/跨链),回管理台点**转入交易账户**;进阶用户可直接向交易账户地址转 USDC(**必须走 Polygon 网络**)。
+4. 打开**实盘开关**。建议先用 5 股最小单量试跑,对比实盘成交与模拟盘的差距后再加仓。
+
+> **两个账户,同一把钥匙。** 迁移期内,网页端可能仍显示旧代理钱包且余额为 $0,而资金实际在充值钱包里 —— 这是正常现象。账户分家期间**不要用网页的充值按钮**:钱会进旧账户,必须再用「参数设置 → 充值 → 转入交易账户」搬进来机器人才能用。
 
 ### 项目结构
 

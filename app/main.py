@@ -139,6 +139,59 @@ def _persist_env(key, value):
     p.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
+@app.get("/api/onboard")
+async def api_onboard_status():
+    """交易账户体检:是否已开通(部署+授权),供新用户一键开通。"""
+    import os
+    out = {"key_ready": bool(config.PM_PRIVATE_KEY),
+           "relayer_ready": bool(os.environ.get("PM_RELAYER_API_KEY")),
+           "signer": addresses.signer_address(config.PM_PRIVATE_KEY),
+           "configured_funder": config.PM_FUNDER,
+           "signature_type": config.PM_SIGNATURE_TYPE,
+           "sdk_ready": SDK_PY.exists()}
+    if out["key_ready"] and out["relayer_ready"] and out["sdk_ready"]:
+        try:
+            r = await _wallet_ops("status", timeout=90)
+            out.update(wallet=r.get("wallet"), wallet_type=r.get("wallet_type"),
+                       balance=r.get("balance"), approved=r.get("approved"))
+            out["ready"] = bool(r.get("approved")) and (
+                (config.PM_FUNDER or "").lower() == (r.get("wallet") or "").lower())
+        except Exception as exc:  # noqa: BLE001
+            out["error"] = str(exc)[:200]
+    return out
+
+
+@app.post("/api/onboard")
+async def api_onboard_run():
+    """一键开通:部署充值钱包(若无)+ 开交易授权 + 写入本机配置。"""
+    import os
+    if not config.PM_PRIVATE_KEY:
+        return JSONResponse({"ok": False, "error": "请先配置钱包私钥"}, status_code=400)
+    if not os.environ.get("PM_RELAYER_API_KEY"):
+        return JSONResponse({"ok": False, "error": "缺少 PM_RELAYER_API_KEY(免 gas 开通所需)"},
+                            status_code=400)
+    if not SDK_PY.exists():
+        return JSONResponse({"ok": False, "error": "缺少 .venv-sdk(见 README 安装第 2 步)"},
+                            status_code=400)
+    try:
+        r = await _wallet_ops("onboard", timeout=300)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:250]}, status_code=500)
+    wallet = r.get("wallet") or ""
+    if wallet:                                     # 开通成功 -> 自动写入下单身份
+        _persist_env("PM_FUNDER", wallet)
+        _persist_env("PM_SIGNATURE_TYPE", "3")
+        os.environ["PM_FUNDER"] = wallet
+        os.environ["PM_SIGNATURE_TYPE"] = "3"
+        config.PM_FUNDER = wallet
+        config.PM_SIGNATURE_TYPE = 3
+        executor._client = None
+        db.set_meta("clob_creds", "")
+        log.info("onboarded trading wallet %s (approved=%s)", wallet,
+                 not r.get("already"))
+    return r
+
+
 @app.get("/api/clawby")
 async def api_clawby_status():
     k = config.CLAWBY_API_KEY or ""

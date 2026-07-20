@@ -67,6 +67,64 @@ function ClawbyCard({ onChanged }) {
   )
 }
 
+function OnboardCard({ onChanged }) {
+  const { t } = useLang()
+  const [st, setSt] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => apiGet('/api/onboard').then(setSt).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  const run = async () => {
+    setBusy(true)
+    try {
+      const r = await apiPost('/api/onboard', {})
+      message.success(r.already ? t('ob.already') : t('ob.done', { w: r.wallet }), 8)
+      load(); onChanged()
+    } catch (e) { message.error(String(e.message || e), 8) } finally { setBusy(false) }
+  }
+
+  if (!st) return <Card title={t('ob.title')} size="small" loading />
+  const blockers = []
+  if (!st.key_ready) blockers.push(t('ob.need.key'))
+  if (!st.relayer_ready) blockers.push(t('ob.need.relayer'))
+  if (!st.sdk_ready) blockers.push(t('ob.need.sdk'))
+
+  return (
+    <Card title={t('ob.title')} size="small"
+      style={st.ready ? undefined : { borderColor: '#d89614' }}
+      extra={<Button size="small" onClick={load}>{t('ob.recheck')}</Button>}>
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        {st.ready ? (
+          <Alert type="success" showIcon message={(
+            <Space wrap size={4}>
+              {t('ob.ready')}
+              <Typography.Text code copyable style={{ fontSize: 11 }}>{st.wallet}</Typography.Text>
+              <Tag color="blue">{st.wallet_type}</Tag>
+              <Tag color="success">{t('ob.approved')}: {t('ob.yes')}</Tag>
+            </Space>
+          )} />
+        ) : (
+          <>
+            <Alert type="warning" showIcon message={t('ob.notready')} description={t('ob.desc')} />
+            {blockers.length > 0 && (
+              <Space direction="vertical" size={2}>
+                {blockers.map((b) => (
+                  <Typography.Text key={b} type="secondary" style={{ fontSize: 12 }}>{b}</Typography.Text>
+                ))}
+              </Space>
+            )}
+            <Button type="primary" loading={busy} disabled={blockers.length > 0} onClick={run}>
+              {busy ? t('ob.doing') : t('ob.btn')}
+            </Button>
+          </>
+        )}
+        {st.error && <Typography.Text type="danger" style={{ fontSize: 12 }}>{st.error}</Typography.Text>}
+      </Space>
+    </Card>
+  )
+}
+
 function WalletCard() {
   const { t } = useLang()
   const [w, setW] = useState(null)
@@ -434,6 +492,8 @@ export default function Settings() {
     <Form form={form} layout="vertical" initialValues={initial || {}}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <ClawbyCard onChanged={refresh} />
+
+        <OnboardCard onChanged={refresh} />
 
         <Alert type="info" showIcon message={t('g.moved')} />
         <Row gutter={[16, 16]}>

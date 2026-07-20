@@ -23,6 +23,30 @@ def main():
         b = c.get_balance_allowance(asset_type="COLLATERAL")
         print(json.dumps({"ok": True, "address": str(c.wallet),
                           "balance": round(b.balance / 1e6, 2)}))
+    elif cmd == "status":
+        # 交易账户体检:地址 / 是否已部署 / 授权 / 余额
+        b = c.get_balance_allowance(asset_type="COLLATERAL")
+        allow = [int(v) for v in (b.allowances or {}).values()]
+        print(json.dumps({
+            "ok": True, "wallet": str(c.wallet), "wallet_type": str(c.wallet_type),
+            "balance": round(b.balance / 1e6, 2),
+            "approved": bool(allow) and max(allow) > 0,
+        }))
+    elif cmd == "onboard":
+        # 幂等开通:SecureClient.create 已自动部署充值钱包;此处补交易授权
+        b = c.get_balance_allowance(asset_type="COLLATERAL")
+        allow = [int(v) for v in (b.allowances or {}).values()]
+        approved = bool(allow) and max(allow) > 0
+        tx = None
+        if not approved:
+            h = c.setup_trading_approvals()
+            out = h.wait()
+            tx = getattr(out, "transaction_hash", None) or str(out)
+            b = c.get_balance_allowance(asset_type="COLLATERAL")
+        print(json.dumps({"ok": True, "wallet": str(c.wallet),
+                          "wallet_type": str(c.wallet_type),
+                          "approved_tx": tx, "already": approved,
+                          "balance": round(b.balance / 1e6, 2)}))
     elif cmd == "pull":
         legacy, amt = sys.argv[2], int(round(float(sys.argv[3]) * 1e6))
         dest = str(c.wallet)                       # 当前交易账户(充值钱包)
