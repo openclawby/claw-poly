@@ -342,6 +342,15 @@ def get_meta(key, default=""):
     return row["value"] if row else default
 
 
+def positions_all_open():
+    """All positions still in an open state, regardless of round age."""
+    with _lock:
+        rows = _conn.execute(
+            "SELECT * FROM positions WHERE state IN ('ordered','holding','tp_set')"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def unredeemed_live(limit=20):
     """Settled LIVE positions not yet redeemed, oldest first, round ended >2min.
     won=1 when any position on that slug won (has something to claim)."""

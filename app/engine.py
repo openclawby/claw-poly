@@ -143,7 +143,7 @@ async def _handle_ordered(pos, r, settings, now, px_cache, strat_map):
         log.info("filled %s [%s] -> tp @%.2f", r["slug"], pos["strategy"], tpp)
 
 
-async def _handle_settle(pos, r, settings, now, px_cache):
+async def _handle_settle(pos, r, settings, now, px_cache, skip_tp_check=False):
     if now < r["end_ts"] + 15:
         return
     result = r.get("result")
@@ -152,7 +152,8 @@ async def _handle_settle(pos, r, settings, now, px_cache):
     tick = r.get("tick") or 0.01
     tp_hit = False
     tp_price = None
-    if pos.get("tp_order_id"):                    # 挂过止盈单才判定是否触发
+    # 补账(skip_tp_check): 老盘止盈早已不可能成交,直接按市场结果记账,不查实时价
+    if pos.get("tp_order_id") and not skip_tp_check:
         tp_price = pos.get("tp_price")
         if tp_price is None:                      # 旧数据:按全局百分比回算
             tp_price = (pos["entry_price"] or 0) * (1 + settings["take_profit_pct"] / 100)
@@ -182,21 +183,55 @@ async def _handle_settle(pos, r, settings, now, px_cache):
              pos["side"], result, pnl)
 
 
-def _settle_market(r, now):
-    """Record open/close/result on the market row once its window ends."""
+def _settle_market(r, now, force=False):
+    """Record open/close/result on the market row once its window ends.
+    force=True(补账): 立即定 result,不再等价格覆盖窗口。"""
     if r.get("result") or now < r["end_ts"] + 15:
         return r
     result, open_p, close_p = markets.settle_result(r)
-    if result is None and now < r["end_ts"] + 120:
+    if result is None and now < r["end_ts"] + 120 and not force:
         return r
     db.upsert_round(r["slug"], result=result or "unknown",
                     open_price=r.get("open_price") or open_p, close_price=close_p)
     return db.get_round(r["slug"])
 
 
+async def _reconcile_orphans():
+    """启动补账:结算所有已收盘却仍处于在途状态的仓位(重启/窗口滑出遗漏)。"""
+    now = time.time()
+    settings = db.get_settings()
+    stuck = [p for p in db.positions_all_open()
+             if (db.get_round(p["slug"]) or {}).get("end_ts", 0) < now - 30]
+    if not stuck:
+        return
+    log.info("reconcile: %d 个遗留在途仓位待补账", len(stuck))
+    px_cache = {}
+    for pos in stuck:
+        r = db.get_round(pos["slug"])
+        if not r:
+            continue
+        r = _settle_market(r, now, force=True)      # 确保市场结果已落库(补账强制)
+        try:
+            if pos["state"] == "ordered":
+                await executor.cancel_order(pos.get("order_id") or "")
+                db.update_position(pos["slug"], pos["strategy"], state="skipped",
+                                   reason="到期未成交,已撤单(补账)")
+            else:
+                await _handle_settle(pos, r, settings, now, {}, skip_tp_check=True)
+        except Exception:  # noqa: BLE001
+            log.exception("reconcile %s/%s 失败", pos["slug"], pos["strategy"])
+
+
 async def loop():
     log.info("engine started (tick %ss, multi-strategy)", TICK)
     await executor.cancel_all()
+
+    async def _bg_reconcile():
+        try:
+            await _reconcile_orphans()
+        except Exception:  # noqa: BLE001
+            log.exception("startup reconcile failed")
+    asyncio.create_task(_bg_reconcile())           # 后台补账,不阻塞心跳
     while True:
         started = time.monotonic()
         try:
