@@ -175,3 +175,34 @@ def test_clawby_key_required(monkeypatch):
             asyncio.get_event_loop().run_until_complete(clawby.relay("x"))
     finally:
         config.CLAWBY_API_KEY = old
+
+
+def test_factor_ensemble(monkeypatch):
+    from app import btc, strategy
+    fe = strategy.FactorEnsemble({"params": {"fe_lead_sec": 300,
+        "fe_combo": "macd,mom5,mom1,accel", "fe_max_price": 0.51}})
+    r = {"start_ts": 10000, "end_ts": 10300}
+    assert fe.preopen_only is True and fe.entry_ts(r) == 10000 - 300
+
+    # 造一段能让 4 因子全部一致的形态:高频抖动叠加,直到找到一致
+    import random
+    rng = random.Random(7)
+    consistent = None
+    for _ in range(400):
+        cl = [100.0]
+        for _i in range(45):
+            cl.append(cl[-1] * (1 + rng.uniform(-0.004, 0.004)))
+        v = [strategy._FACTORS[k](cl) for k in ("macd", "mom5", "mom1", "accel")]
+        if 0 not in v and (all(x > 0 for x in v) or all(x < 0 for x in v)):
+            consistent = (cl, "up" if v[0] > 0 else "down")
+            break
+    assert consistent, "未造出一致形态"
+    cl, expect_side = consistent
+    monkeypatch.setattr(btc, "minute_closes", lambda n=40, end=None: cl)
+    sig = fe.decide(r, 9500, 0.505)
+    assert sig is not None and sig.side == expect_side      # 一致 -> 下单
+    assert fe.decide(r, 10001, 0.505) is None               # 开盘后不入场
+
+    # 数据不足 -> 弃权
+    monkeypatch.setattr(btc, "minute_closes", lambda n=40, end=None: [100.0] * 10)
+    assert fe.decide(r, 9500, 0.505) is None

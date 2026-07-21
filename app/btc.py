@@ -70,6 +70,18 @@ def buffer_span():
     return time.time() - _buf[0][0]
 
 
+def minute_closes(n=60, end=None):
+    """Last n 1-minute closes ending at `end` (default now), from the ring
+    buffer. Returns oldest→newest list; shorter than n if buffer is thin."""
+    end = int(end or time.time())
+    out = []
+    for i in range(n - 1, -1, -1):
+        p = price_at(end - i * 60)
+        if p:
+            out.append(p)
+    return out
+
+
 async def _backfill():
     """Seed the ring buffer from Binance 1s klines so a restart never leaves
     the strategy signal-blind (no more cold-start skipped rounds)."""

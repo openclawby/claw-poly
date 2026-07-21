@@ -219,6 +219,35 @@ async def api_onboard_run():
     return r
 
 
+@app.post("/api/rounds/retry")
+async def api_round_retry(payload: dict):
+    """人工重试:清除某个下单失败/未参与的仓位,让引擎在盘口结束前重新尝试。"""
+    slug = str(payload.get("slug") or "").strip()
+    strat = str(payload.get("strategy") or "").strip()
+    if not slug or not strat:
+        return JSONResponse({"ok": False, "error": "缺少 slug/strategy"}, status_code=400)
+    pos = db.get_position(slug, strat)
+    if not pos:
+        return JSONResponse({"ok": False, "error": "仓位不存在"}, status_code=404)
+    if pos["state"] != "skipped":
+        return JSONResponse({"ok": False,
+                             "error": f"仅可重试「未参与」状态(当前 {pos['state']})"},
+                            status_code=400)
+    r = db.get_round(slug)
+    now = int(time.time())
+    if not r or now > r["end_ts"] - 30:
+        return JSONResponse({"ok": False, "error": "盘口已结束或即将收盘,无法重试"},
+                            status_code=400)
+    st = strategy.STRATEGIES.get(strat)
+    if st and getattr(st, "preopen_only", False) and now >= r["start_ts"]:
+        return JSONResponse({"ok": False,
+                             "error": "该策略只在开盘前下单,本盘已开盘,无法重试"},
+                            status_code=400)
+    db.delete_position(slug, strat)                 # 删记录 -> 引擎下个 tick 重新尝试
+    log.info("manual retry %s/%s (cleared skipped position)", slug, strat)
+    return {"ok": True, "message": "已加入重试队列,引擎将在下个周期(≤15s)重新尝试"}
+
+
 @app.get("/api/clawby")
 async def api_clawby_status():
     k = config.CLAWBY_API_KEY or ""

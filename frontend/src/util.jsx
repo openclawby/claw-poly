@@ -9,7 +9,7 @@ export const BLUE = '#1668dc'
 export const ORANGE = '#b98217'
 export const CHART_THEME = 'classicDark'
 
-export const STRATEGY_KEYS = ['pre_trend', 'fair_value', 'tick_momo', 'open_burst',
+export const STRATEGY_KEYS = ['pre_trend', 'factor_ensemble', 'fair_value', 'tick_momo', 'open_burst',
   'prev_reverse', 'mystic_east']
 
 export async function apiGet(path) {

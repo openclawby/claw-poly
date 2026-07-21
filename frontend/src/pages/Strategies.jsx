@@ -11,7 +11,7 @@ import { Column, Line } from '@ant-design/plots'
 import { apiGet, apiPost, BLUE, CHART_THEME, ORANGE, Pnl } from '../util'
 import { mx, useLang } from '../i18n'
 
-const ORDER = ['pre_trend', 'fair_value', 'tick_momo', 'open_burst', 'prev_reverse']
+const ORDER = ['pre_trend', 'factor_ensemble', 'fair_value', 'tick_momo', 'open_burst', 'prev_reverse']
 
 function PickTable({ pick }) {
   const { t } = useLang()

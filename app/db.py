@@ -342,6 +342,12 @@ def get_meta(key, default=""):
     return row["value"] if row else default
 
 
+def delete_position(slug, strategy):
+    with _lock, _conn:
+        _conn.execute("DELETE FROM positions WHERE slug=? AND strategy=?",
+                      (slug, strategy))
+
+
 def positions_all_open():
     """All positions still in an open state, regardless of round age."""
     with _lock:

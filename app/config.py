@@ -38,10 +38,13 @@ DEFAULT_SETTINGS = {
                  ' "tick_momo": {"shares": 10, "daily_loss": 10, "entry_delay": 60},'
                  ' "open_burst": {"shares": 10, "daily_loss": 10, "entry_delay": 60},'
                  ' "prev_reverse": {"shares": 10, "daily_loss": 10, "entry_delay": 10},'
+                 ' "factor_ensemble": {"shares": 10, "daily_loss": 15, "entry_delay": 0},'
                  ' "mystic_east": {"shares": 5, "daily_loss": 260, "entry_delay": 0}}',
     # per-strategy tunables (JSON, admin-editable)
     "params": '{"edge_min": 0.06, "price_margin": 0.02, "burst_min": 0.05,'
               ' "rev_min": 0.15, "momo_window": 60, "lead_sec": 600,'
               ' "lookback_sec": 600, "min_move_pct": 0.2, "signal": "revert",'
-              ' "max_price": 0.51, "cover": 1}',
+              ' "max_price": 0.51, "cover": 1,'
+              ' "fe_lead_sec": 300, "fe_combo": "macd,mom5,mom1,accel",'
+              ' "fe_max_price": 0.51}',
 }

@@ -1,11 +1,11 @@
 import React, { useCallback, useContext, useEffect, useState } from 'react'
 import {
-  Button, Card, Col, Descriptions, Row, Select, Space, Statistic, Switch,
-  Table, Tag, Typography, message,
+  Button, Card, Col, Descriptions, Popconfirm, Row, Select, Space, Statistic,
+  Switch, Table, Tag, Typography, message,
 } from 'antd'
-import { DownloadOutlined, ExportOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, ExportOutlined, RedoOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
-  apiGet, fmtTs, GREEN, KindTag, ModeTag, num, Pnl, pmUrl, RED, ResultTag,
+  apiGet, apiPost, fmtTs, GREEN, KindTag, ModeTag, num, Pnl, pmUrl, RED, ResultTag,
   SideTag, STATE_KEYS, StateTag, STRATEGY_KEYS,
 } from '../util'
 import { Ctx } from '../App'
@@ -205,7 +205,29 @@ export default function Rounds() {
                     </Typography.Text>
                   )
                 }
-                return <Typography.Text style={{ fontSize: 12 }} ellipsis={{ tooltip: v }}>{v || '—'}</Typography.Text>
+                const failed = row.state === 'skipped' && row.strategy
+                  && /下单失败|失败|超时|internal|error|500|502|503/i.test(v || '')
+                const nowS = Math.floor(Date.now() / 1000)
+                const retriable = failed && row.end_ts > nowS + 30
+                return (
+                  <Space size={4}>
+                    <Typography.Text style={{ fontSize: 12 }} ellipsis={{ tooltip: v }}>{v || '—'}</Typography.Text>
+                    {retriable && (
+                      <Popconfirm
+                        title={t('r.retry.confirm')} description={t('r.retry.desc')}
+                        onConfirm={async () => {
+                          try {
+                            await apiPost('/api/rounds/retry', { slug: row.slug, strategy: row.strategy })
+                            message.success(t('r.retry.done')); load()
+                          } catch (e) { message.error(String(e.message || e)) }
+                        }}
+                        okText={t('r.retry')} cancelText={t('c.cancel')}
+                      >
+                        <Button size="small" type="link" icon={<RedoOutlined />} style={{ padding: 0 }}>{t('r.retry')}</Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                )
               },
             },
           ]}

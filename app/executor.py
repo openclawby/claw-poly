@@ -59,6 +59,37 @@ async def _get_client():
         return _client
 
 
+def _is_transient(exc):
+    """服务器/网络类错误(5xx / 超时 / 连接)才值得重试;4xx 参数错误不重试。"""
+    s = str(exc).lower()
+    if "status_code=5" in s or "status=5" in s:            # 500/502/503/504
+        return True
+    if any(k in s for k in ("timeout", "timed out", "connection",
+                            "request exception", "temporarily")):
+        return True
+    if "status_code=4" in s or "status=4" in s:            # 明确的 4xx 不重试
+        return False
+    return False
+
+
+async def _post_with_retry(fn, slug, attempts=3):
+    """下单提交,遇 5xx/网络类错误退避重试;4xx 立即抛出。"""
+    last = None
+    for i in range(attempts):
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if i < attempts - 1 and _is_transient(exc):
+                wait = 2 * (i + 1)
+                log.warning("下单 %s 第%d次遇服务器错误,%ds 后重试:%s",
+                            slug, i + 1, wait, str(exc)[:100])
+                await asyncio.sleep(wait)
+                continue
+            raise
+    raise last
+
+
 async def place_limit(round_row, side, shares, limit_price, settings, strategy=""):
     """GTC limit BUY of `shares` shares. Returns order_id (paper: 'paper:...')."""
     m = mode(settings)
@@ -88,7 +119,7 @@ async def place_limit(round_row, side, shares, limit_price, settings, strategy="
                                  size=shares, side=Side.BUY),
             options=opts, order_type=OrderType.GTC)
 
-    resp = await asyncio.to_thread(_do)
+    resp = await _post_with_retry(_do, round_row["slug"])
     oid = (resp or {}).get("orderID") or (resp or {}).get("orderId") or ""
     ok = bool((resp or {}).get("success", oid))
     db.log_order(round_row["slug"], "buy_limit", side, price, usd, oid, m,
